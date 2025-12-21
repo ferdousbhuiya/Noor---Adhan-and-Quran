@@ -1,0 +1,8 @@
+{
+  "name": "Noor - Adhan and Quran with Translation.",
+  "description": "A comprehensive Islamic application featuring Quran with multi-Qari recitation, prayer times with Adhan notifications, a digital Tasbih counter, and a Hijri calendar.",
+  "requestFramePermissions": [
+    "geolocation",
+    "microphone"
+  ]
+}
