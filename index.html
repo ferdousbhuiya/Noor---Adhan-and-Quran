@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -8,10 +7,26 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="theme-color" content="#064e3b">
     <title>Noor - Islamic Companion</title>
+    
+    <script type="importmap">
+{
+  "imports": {
+    "react": "https://esm.sh/react@19.0.0",
+    "react-dom": "https://esm.sh/react-dom@19.0.0",
+    "react-dom/client": "https://esm.sh/react-dom@19.0.0/client",
+    "lucide-react": "https://esm.sh/lucide-react@0.462.0",
+    "@google/genai": "https://esm.sh/@google/genai@1.34.0",
+    "react-dom/": "https://esm.sh/react-dom@^19.2.3/",
+    "react/": "https://esm.sh/react@^19.2.3/"
+  }
+}
+</script>
+
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Amiri:ital,wght@0,400;0,700;1,400;1,700&family=Plus+Jakarta+Sans:ital,wght@0,200..800;1,200..800&display=swap" rel="stylesheet">
+    
     <style>
         :root {
             --app-bg: #f2f6f4;
@@ -22,6 +37,8 @@
             -webkit-tap-highlight-color: transparent;
             color: #1a2e25;
             user-select: none;
+            margin: 0;
+            padding: 0;
         }
         .arabic-text {
             font-family: 'Amiri', serif;
@@ -39,44 +56,71 @@
             -ms-overflow-style: none;
             scrollbar-width: none;
         }
-        .safe-bottom {
-            padding-bottom: env(safe-area-inset-bottom);
-        }
         .shadow-premium {
             box-shadow: 0 10px 30px -5px rgba(0, 0, 0, 0.05), 0 4px 12px -2px rgba(0, 0, 0, 0.03);
         }
-        @supports (-webkit-touch-callout: none) {
-            .min-h-screen {
-                min-height: -webkit-fill-available;
-            }
+        #app-loader {
+            position: fixed;
+            inset: 0;
+            background: #064e3b;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 9999;
+            transition: opacity 0.5s ease;
+        }
+        .spinner {
+            width: 40px;
+            height: 40px;
+            border: 4px solid rgba(255,255,255,0.1);
+            border-left-color: #10b981;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        #error-display {
+            position: fixed;
+            bottom: 20px;
+            left: 20px;
+            right: 20px;
+            background: #fee2e2;
+            color: #991b1b;
+            padding: 15px;
+            border-radius: 12px;
+            font-size: 12px;
+            display: none;
+            z-index: 10000;
+            border: 1px solid #fecaca;
         }
     </style>
-<script type="importmap">
-{
-  "imports": {
-    "react/": "https://esm.sh/react@^19.2.3/",
-    "react": "https://esm.sh/react@^19.2.3",
-    "lucide-react": "https://esm.sh/lucide-react@^0.562.0",
-    "react-dom/": "https://esm.sh/react-dom@^19.2.3/",
-    "@google/genai": "https://esm.sh/@google/genai@^1.34.0"
-  }
-}
-</script>
-<script>
-    // Polyfill for process.env to prevent crashes on GitHub Pages
-    window.process = { 
-        env: { 
-            API_KEY: "" 
-        } 
-    };
-</script>
+    <script>
+        // Polyfill for process.env
+        window.process = { env: { API_KEY: "" } };
+        
+        // Error tracker for debugging GitHub Pages issues
+        window.addEventListener('error', function(e) {
+            const display = document.getElementById('error-display');
+            if (display) {
+                display.style.display = 'block';
+                display.innerText = 'App Error: ' + e.message + ' at ' + e.filename + ':' + e.lineno;
+            }
+        });
+    </script>
 </head>
 <body class="overflow-x-hidden antialiased">
+    <div id="app-loader">
+        <div class="spinner"></div>
+        <p style="color: white; font-family: sans-serif; font-size: 10px; margin-top: 20px; letter-spacing: 2px; font-weight: 900; text-transform: uppercase;">Initializing Noor</p>
+    </div>
+
     <div id="root"></div>
-    <!-- Explicit module entry point -->
+    <div id="error-display"></div>
+
     <script type="module" src="./index.tsx"></script>
     <script>
-        // Use relative path for Service Worker to work in subdirectories
         if ('serviceWorker' in navigator) {
             window.addEventListener('load', () => {
                 navigator.serviceWorker.register('./sw.js').catch(err => console.log('SW registration failed:', err));

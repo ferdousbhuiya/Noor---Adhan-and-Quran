@@ -1,16 +1,16 @@
 
 import React, { useState, useEffect } from 'react';
-import { AppSection, AppSettings, AdhanSettings } from './types';
-import Home from './components/Home';
-import Quran from './components/Quran';
-import Tasbih from './components/Tasbih';
-import Adhan from './components/Adhan';
-import Calendar from './components/Calendar';
-import DuaView from './components/Dua';
-import Qiblah from './components/Qiblah';
-import Explore from './components/Explore';
-import SettingsView from './components/Settings';
-import { db } from './services/db';
+import { AppSection, AppSettings, AdhanSettings } from './types.ts';
+import Home from './components/Home.tsx';
+import Quran from './components/Quran.tsx';
+import Tasbih from './components/Tasbih.tsx';
+import Adhan from './components/Adhan.tsx';
+import Calendar from './components/Calendar.tsx';
+import DuaView from './components/Dua.tsx';
+import Qiblah from './components/Qiblah.tsx';
+import Explore from './components/Explore.tsx';
+import SettingsView from './components/Settings.tsx';
+import { db } from './services/db.ts';
 import { Home as HomeIcon, BookOpen, Clock, Heart, CircleDot, Settings as SettingsIcon } from 'lucide-react';
 
 const DEFAULT_SETTINGS: AppSettings = {
@@ -43,7 +43,21 @@ const App: React.FC = () => {
   });
 
   useEffect(() => {
-    db.init().then(() => setIsDbReady(true));
+    db.init().then(() => {
+      console.log("DB Initialized successfully");
+      setIsDbReady(true);
+      // Remove loading indicator from HTML if present
+      const loader = document.getElementById('app-loader');
+      if (loader) {
+          loader.style.opacity = '0';
+          setTimeout(() => loader.remove(), 300);
+      }
+    }).catch(err => {
+      console.error("DB Init failed", err);
+      const errorEl = document.getElementById('error-display');
+      if (errorEl) errorEl.innerText = "Error initializing database: " + err;
+      setIsDbReady(true);
+    });
     
     navigator.geolocation.getCurrentPosition(
       (pos) => setLocation({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
