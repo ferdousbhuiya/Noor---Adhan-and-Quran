@@ -62,14 +62,24 @@
   }
 }
 </script>
+<script>
+    // Polyfill for process.env to prevent crashes on GitHub Pages
+    window.process = { 
+        env: { 
+            API_KEY: "" 
+        } 
+    };
+</script>
 </head>
 <body class="overflow-x-hidden antialiased">
     <div id="root"></div>
+    <!-- Explicit module entry point -->
+    <script type="module" src="./index.tsx"></script>
     <script>
-        // Simple Service Worker for basic PWA offline support
+        // Use relative path for Service Worker to work in subdirectories
         if ('serviceWorker' in navigator) {
             window.addEventListener('load', () => {
-                navigator.serviceWorker.register('/sw.js').catch(err => console.log('SW registration failed:', err));
+                navigator.serviceWorker.register('./sw.js').catch(err => console.log('SW registration failed:', err));
             });
         }
     </script>

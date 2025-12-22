@@ -141,25 +141,20 @@ const Quran: React.FC<QuranProps> = ({ settings }) => {
     }
   };
 
+  /**
+   * Aggressively strips the Bismillah from the first Ayah.
+   * In most editions returned by Al-Quran Cloud, for all Surahs except 1 and 9,
+   * the first Ayah text is prefixed by "بِسْمِ ٱللَّهِ ٱلرَّحْمَٰنِ ٱلرَّحِيمِ ".
+   * This is exactly 4 words.
+   */
   const getCleanedAyahText = (ayah: Ayah, surahNumber: number) => {
     if (ayah.numberInSurah === 1 && surahNumber !== 1 && surahNumber !== 9) {
       const text = ayah.text.trim();
+      const words = text.split(/\s+/);
       
-      const bismillahPatterns = [
-        "بِسْمِ ٱللَّهِ ٱلرَّحْمَٰنِ ٱلرَّحِيمِ",
-        "بِسْمِ اللَّهِ الرَّحْمَٰنِ الرَّحِيمِ",
-        "بِسْمِ اللهِ الرَّحْمٰنِ الرَّحِيْمِ"
-      ];
-      
-      for (const pattern of bismillahPatterns) {
-        if (text.startsWith(pattern)) {
-          return text.substring(pattern.length).trim();
-        }
-      }
-
-      const words = text.split(' ');
+      // If the first word contains the root "بِسْمِ", strip the first 4 tokens.
       if (words.length >= 4 && words[0].includes('بِسْمِ')) {
-          return words.slice(4).join(' ').trim();
+        return words.slice(4).join(' ').trim();
       }
     }
     return ayah.text;

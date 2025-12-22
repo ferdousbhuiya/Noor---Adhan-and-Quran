@@ -1,8 +1,8 @@
 
-const CACHE_NAME = 'noor-v1';
+const CACHE_NAME = 'noor-v2';
 const ASSETS = [
-  '/',
-  '/index.html',
+  './',
+  './index.html',
   'https://cdn.tailwindcss.com',
   'https://fonts.googleapis.com/css2?family=Amiri:ital,wght@0,400;0,700;1,400;1,700&family=Plus+Jakarta+Sans:ital,wght@0,200..800;1,200..800&display=swap'
 ];
