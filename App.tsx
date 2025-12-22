@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { AppSection, AppSettings, AdhanSettings } from './types.ts';
 import Home from './components/Home.tsx';
@@ -43,27 +42,38 @@ const App: React.FC = () => {
   });
 
   useEffect(() => {
-    db.init().then(() => {
-      console.log("DB Initialized successfully");
-      setIsDbReady(true);
-      // Remove loading indicator from HTML if present
-      const loader = document.getElementById('app-loader');
-      if (loader) {
-          loader.style.opacity = '0';
-          setTimeout(() => loader.remove(), 300);
-      }
-    }).catch(err => {
-      console.error("DB Init failed", err);
-      const errorEl = document.getElementById('error-display');
-      if (errorEl) errorEl.innerText = "Error initializing database: " + err;
-      setIsDbReady(true);
-    });
-    
+    // Attempt DB init
+    const dbPromise = db.init()
+      .then(() => console.log("DB Ready"))
+      .catch(err => console.error("DB Error", err))
+      .finally(() => setIsDbReady(true));
+
+    // Fallback if DB hangs
+    const timeout = setTimeout(() => setIsDbReady(true), 3000);
+
     navigator.geolocation.getCurrentPosition(
       (pos) => setLocation({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
-      (err) => console.error("Geolocation failed", err)
+      (err) => {
+        console.warn("Geolocation denied, using default (Mecca)");
+        setLocation({ lat: 21.4225, lng: 39.8262 });
+      },
+      { timeout: 5000 }
     );
+
+    return () => clearTimeout(timeout);
   }, []);
+
+  useEffect(() => {
+    if (isDbReady) {
+      const loader = document.getElementById('app-loader');
+      if (loader) {
+        loader.style.opacity = '0';
+        setTimeout(() => {
+          loader.style.visibility = 'hidden';
+        }, 500);
+      }
+    }
+  }, [isDbReady]);
 
   if (!isDbReady) return null;
 
@@ -90,7 +100,7 @@ const App: React.FC = () => {
       case AppSection.Calendar:
         return <Calendar />;
       case AppSection.Dua:
-        return <DuaView onRecite={(d) => setActiveSection(AppSection.Tasbih)} />;
+        return <DuaView onRecite={() => setActiveSection(AppSection.Tasbih)} />;
       case AppSection.Qiblah:
         return <Qiblah location={location} />;
       case AppSection.Explore:
@@ -104,13 +114,12 @@ const App: React.FC = () => {
 
   return (
     <div className="flex flex-col min-h-screen bg-[#f2f6f4] max-w-lg mx-auto shadow-2xl relative overflow-hidden">
-      <main className="flex-1 overflow-y-auto pb-24 no-scrollbar">
+      <main className="flex-1 overflow-y-auto pb-28 no-scrollbar">
         {renderSection()}
       </main>
 
-      {/* Navigation Dock - Optimized for 5 items visibility */}
       <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[100] w-[calc(100%-3rem)] max-w-sm pointer-events-none">
-        <nav className="glass-nav flex justify-between items-center h-20 w-full px-2 rounded-[2.5rem] border border-white/40 shadow-2xl pointer-events-auto">
+        <nav className="glass-nav flex justify-between items-center h-20 w-full px-2 rounded-[2.5rem] shadow-2xl pointer-events-auto">
             <NavItem icon={<HomeIcon size={20} />} label="Home" active={activeSection === AppSection.Home} onClick={() => setActiveSection(AppSection.Home)} />
             <NavItem icon={<BookOpen size={20} />} label="Quran" active={activeSection === AppSection.Quran} onClick={() => setActiveSection(AppSection.Quran)} />
             <NavItem icon={<CircleDot size={20} />} label="Dhikr" active={activeSection === AppSection.Tasbih} onClick={() => setActiveSection(AppSection.Tasbih)} />
@@ -131,10 +140,10 @@ interface NavItemProps {
 
 const NavItem: React.FC<NavItemProps> = ({ icon, label, active, onClick }) => (
   <button onClick={onClick} className={`flex flex-col items-center justify-center transition-all flex-1 h-full ${active ? 'text-emerald-800' : 'text-slate-400'}`}>
-    <div className={`p-2 rounded-2xl transition-all ${active ? 'bg-emerald-100 shadow-sm scale-110' : 'hover:bg-slate-50'}`}>
+    <div className={`p-2.5 rounded-2xl transition-all ${active ? 'bg-emerald-100/80 shadow-sm scale-110' : 'hover:bg-slate-50'}`}>
       {icon}
     </div>
-    <span className={`text-[8px] font-black uppercase tracking-widest mt-1 transition-opacity ${active ? 'opacity-100' : 'opacity-0 h-auto'}`}>{label}</span>
+    <span className={`text-[8px] font-black uppercase tracking-widest mt-1 transition-all ${active ? 'opacity-100 scale-100' : 'opacity-0 scale-75 h-0 overflow-hidden'}`}>{label}</span>
   </button>
 );
 
