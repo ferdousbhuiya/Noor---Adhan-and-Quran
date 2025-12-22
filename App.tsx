@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { AppSection, AppSettings } from './types';
+import { AppSection, AppSettings, AdhanSettings } from './types';
 import Home from './components/Home';
 import Quran from './components/Quran';
 import Tasbih from './components/Tasbih';
@@ -11,7 +11,7 @@ import Qiblah from './components/Qiblah';
 import Explore from './components/Explore';
 import SettingsView from './components/Settings';
 import { db } from './services/db';
-import { Home as HomeIcon, BookOpen, Clock, Heart, CircleDot, Settings as SettingsIcon, Compass, Search } from 'lucide-react';
+import { Home as HomeIcon, BookOpen, Clock, Heart, CircleDot, Settings as SettingsIcon } from 'lucide-react';
 
 const DEFAULT_SETTINGS: AppSettings = {
   quran: {
@@ -26,6 +26,8 @@ const DEFAULT_SETTINGS: AppSettings = {
     styleId: 'full',
     method: 2,
     school: 0,
+    fajrAngle: 18,
+    ishaAngle: 18,
     notifications: { Fajr: true, Dhuhr: true, Asr: true, Maghrib: true, Isha: true }
   },
   tasbihTarget: 33
@@ -39,8 +41,6 @@ const App: React.FC = () => {
     const saved = localStorage.getItem('noor_settings');
     return saved ? JSON.parse(saved) : DEFAULT_SETTINGS;
   });
-
-  const [dhikrSession, setDhikrSession] = useState<{ title: string, text?: string, target: number, image?: string } | null>(null);
 
   useEffect(() => {
     db.init().then(() => setIsDbReady(true));
@@ -58,13 +58,9 @@ const App: React.FC = () => {
     localStorage.setItem('noor_settings', JSON.stringify(newSettings));
   };
 
-  const startDhikrSession = (dua: { title: string, text?: string, target: number, image?: string }) => {
-    setDhikrSession(dua);
-    setActiveSection(AppSection.Tasbih);
-  };
-
-  const clearDhikrSession = () => {
-    setDhikrSession(null);
+  const handleUpdateAdhanSettings = (newAdhanSettings: AdhanSettings) => {
+    const newSettings = { ...settings, adhan: newAdhanSettings };
+    handleSaveSettings(newSettings);
   };
 
   const renderSection = () => {
@@ -74,17 +70,13 @@ const App: React.FC = () => {
       case AppSection.Quran:
         return <Quran settings={settings.quran} />;
       case AppSection.Tasbih:
-        return <Tasbih 
-          target={dhikrSession ? dhikrSession.target : settings.tasbihTarget} 
-          session={dhikrSession}
-          onClearSession={clearDhikrSession}
-        />;
+        return <Tasbih />;
       case AppSection.Adhan:
-        return <Adhan location={location} settings={settings.adhan} />;
+        return <Adhan location={location} settings={settings.adhan} onUpdateSettings={handleUpdateAdhanSettings} />;
       case AppSection.Calendar:
         return <Calendar />;
       case AppSection.Dua:
-        return <DuaView onRecite={startDhikrSession} />;
+        return <DuaView onRecite={(d) => setActiveSection(AppSection.Tasbih)} />;
       case AppSection.Qiblah:
         return <Qiblah location={location} />;
       case AppSection.Explore:
@@ -102,15 +94,14 @@ const App: React.FC = () => {
         {renderSection()}
       </main>
 
-      <div className="fixed bottom-6 left-6 right-6 z-50 flex justify-center pointer-events-none">
-        <nav className="glass-nav flex justify-around items-center h-18 w-full max-w-sm px-4 rounded-[2.5rem] border border-white/40 shadow-2xl pointer-events-auto overflow-x-auto no-scrollbar py-2">
-            <NavItem icon={<HomeIcon size={18} />} label="Home" active={activeSection === AppSection.Home} onClick={() => setActiveSection(AppSection.Home)} />
-            <NavItem icon={<BookOpen size={18} />} label="Quran" active={activeSection === AppSection.Quran} onClick={() => setActiveSection(AppSection.Quran)} />
-            <NavItem icon={<CircleDot size={18} />} label="Dhikr" active={activeSection === AppSection.Tasbih} onClick={() => setActiveSection(AppSection.Tasbih)} />
-            <NavItem icon={<Heart size={18} />} label="Dua" active={activeSection === AppSection.Dua} onClick={() => setActiveSection(AppSection.Dua)} />
-            <NavItem icon={<Search size={18} />} label="Explore" active={activeSection === AppSection.Explore} onClick={() => setActiveSection(AppSection.Explore)} />
-            <NavItem icon={<Compass size={18} />} label="Qiblah" active={activeSection === AppSection.Qiblah} onClick={() => setActiveSection(AppSection.Qiblah)} />
-            <NavItem icon={<SettingsIcon size={18} />} label="Menu" active={activeSection === AppSection.Settings} onClick={() => setActiveSection(AppSection.Settings)} />
+      {/* Navigation Dock - Optimized for 5 items visibility */}
+      <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[100] w-[calc(100%-3rem)] max-w-sm pointer-events-none">
+        <nav className="glass-nav flex justify-between items-center h-20 w-full px-2 rounded-[2.5rem] border border-white/40 shadow-2xl pointer-events-auto">
+            <NavItem icon={<HomeIcon size={20} />} label="Home" active={activeSection === AppSection.Home} onClick={() => setActiveSection(AppSection.Home)} />
+            <NavItem icon={<BookOpen size={20} />} label="Quran" active={activeSection === AppSection.Quran} onClick={() => setActiveSection(AppSection.Quran)} />
+            <NavItem icon={<CircleDot size={20} />} label="Dhikr" active={activeSection === AppSection.Tasbih} onClick={() => setActiveSection(AppSection.Tasbih)} />
+            <NavItem icon={<Heart size={20} />} label="Dua" active={activeSection === AppSection.Dua} onClick={() => setActiveSection(AppSection.Dua)} />
+            <NavItem icon={<SettingsIcon size={20} />} label="Settings" active={activeSection === AppSection.Settings} onClick={() => setActiveSection(AppSection.Settings)} />
         </nav>
       </div>
     </div>
@@ -125,11 +116,11 @@ interface NavItemProps {
 }
 
 const NavItem: React.FC<NavItemProps> = ({ icon, label, active, onClick }) => (
-  <button onClick={onClick} className={`flex flex-col items-center justify-center space-y-1 transition-all flex-1 min-w-[50px] ${active ? 'text-emerald-800 scale-110' : 'text-slate-400 hover:text-emerald-600'}`}>
-    <div className={`p-1 rounded-xl transition-all ${active ? 'bg-emerald-100 shadow-sm' : ''}`}>
+  <button onClick={onClick} className={`flex flex-col items-center justify-center transition-all flex-1 h-full ${active ? 'text-emerald-800' : 'text-slate-400'}`}>
+    <div className={`p-2 rounded-2xl transition-all ${active ? 'bg-emerald-100 shadow-sm scale-110' : 'hover:bg-slate-50'}`}>
       {icon}
     </div>
-    <span className={`text-[8px] font-black uppercase tracking-widest ${active ? 'opacity-100' : 'opacity-0'}`}>{label}</span>
+    <span className={`text-[8px] font-black uppercase tracking-widest mt-1 transition-opacity ${active ? 'opacity-100' : 'opacity-0 h-auto'}`}>{label}</span>
   </button>
 );
 

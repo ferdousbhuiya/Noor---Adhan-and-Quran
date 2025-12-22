@@ -9,6 +9,8 @@ interface QuranProps {
   settings: QuranSettings;
 }
 
+const BASMALA_TEXT = "بِسْمِ اللَّهِ الرَّحْمَٰنِ الرَّحِيمِ";
+
 const Quran: React.FC<QuranProps> = ({ settings }) => {
   const [surahs, setSurahs] = useState<Surah[]>([]);
   const [selectedSurah, setSelectedSurah] = useState<Surah | null>(null);
@@ -33,23 +35,31 @@ const Quran: React.FC<QuranProps> = ({ settings }) => {
   useEffect(() => {
     if (selectedSurah) {
       setLoading(true);
+      ayahRefs.current = {}; 
       fetchSurahAyahs(selectedSurah.number, settings.reciterId, settings.translationId).then(data => {
         setAyahs(data);
         setLoading(false);
-        if (pendingScrollTo !== null) {
-          setTimeout(() => {
-             const element = ayahRefs.current[pendingScrollTo];
-             if (element) {
-               element.scrollIntoView({ behavior: 'smooth', block: 'center' });
-             }
-             setPendingScrollTo(null);
-          }, 300);
-        } else {
-          window.scrollTo(0, 0);
-        }
       });
     }
   }, [selectedSurah, settings.reciterId, settings.translationId]);
+
+  useEffect(() => {
+    if (!loading && ayahs.length > 0 && pendingScrollTo !== null) {
+      const scrollTimer = setTimeout(() => {
+        const element = ayahRefs.current[pendingScrollTo];
+        if (element) {
+          element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          element.style.transition = 'background-color 0.5s ease';
+          element.style.backgroundColor = '#ecfdf5';
+          setTimeout(() => {
+            element.style.backgroundColor = 'white';
+          }, 2000);
+          setPendingScrollTo(null);
+        }
+      }, 500); 
+      return () => clearTimeout(scrollTimer);
+    }
+  }, [ayahs, loading, pendingScrollTo]);
 
   useEffect(() => {
     localStorage.setItem('noor_bookmarks', JSON.stringify(bookmarks));
@@ -102,8 +112,8 @@ const Quran: React.FC<QuranProps> = ({ settings }) => {
   const jumpToBookmark = (b: Bookmark) => {
     const surah = surahs.find(s => s.number === b.surahNumber);
     if (surah) {
-      setSelectedSurah(surah);
       setPendingScrollTo(b.ayahNumber);
+      setSelectedSurah(surah);
       setShowBookmarks(false);
     }
   };
@@ -124,8 +134,35 @@ const Quran: React.FC<QuranProps> = ({ settings }) => {
   const nextSurah = () => {
     if (selectedSurah && selectedSurah.number < 114) {
       const nextS = surahs.find(s => s.number === selectedSurah.number + 1);
-      if (nextS) setSelectedSurah(nextS);
+      if (nextS) {
+        setSelectedSurah(nextS);
+        window.scrollTo(0,0);
+      }
     }
+  };
+
+  const getCleanedAyahText = (ayah: Ayah, surahNumber: number) => {
+    if (ayah.numberInSurah === 1 && surahNumber !== 1 && surahNumber !== 9) {
+      const text = ayah.text.trim();
+      
+      const bismillahPatterns = [
+        "بِسْمِ ٱللَّهِ ٱلرَّحْمَٰنِ ٱلرَّحِيمِ",
+        "بِسْمِ اللَّهِ الرَّحْمَٰنِ الرَّحِيمِ",
+        "بِسْمِ اللهِ الرَّحْمٰنِ الرَّحِيْمِ"
+      ];
+      
+      for (const pattern of bismillahPatterns) {
+        if (text.startsWith(pattern)) {
+          return text.substring(pattern.length).trim();
+        }
+      }
+
+      const words = text.split(' ');
+      if (words.length >= 4 && words[0].includes('بِسْمِ')) {
+          return words.slice(4).join(' ').trim();
+      }
+    }
+    return ayah.text;
   };
 
   if (selectedSurah) {
@@ -134,12 +171,15 @@ const Quran: React.FC<QuranProps> = ({ settings }) => {
         <header className="sticky top-0 bg-emerald-950 text-white p-5 flex items-center justify-between shadow-2xl z-20 rounded-b-[2.5rem]">
           <div className="flex items-center gap-4">
             <button onClick={() => setSelectedSurah(null)} className="p-2 bg-white/10 rounded-2xl active:scale-90 transition-all"><ChevronLeft size={20} /></button>
-            <div>
-              <h2 className="font-black text-xl tracking-tight">{selectedSurah.englishName}</h2>
-              <p className="text-[10px] text-emerald-400 font-black uppercase tracking-[0.2em]">{selectedSurah.name}</p>
+            <div className="max-w-[150px]">
+              <h2 className="font-black text-xl tracking-tight truncate">{selectedSurah.englishName}</h2>
+              <p className="text-[10px] text-emerald-400 font-black uppercase tracking-[0.2em] truncate">{selectedSurah.name}</p>
             </div>
           </div>
-          <button onClick={() => setShowBookmarks(true)} className="p-3 bg-white/10 rounded-2xl active:scale-90 transition-all border border-white/5"><BookmarkIcon size={20} /></button>
+          <button onClick={() => setShowBookmarks(true)} className="p-3 bg-white/10 rounded-2xl active:scale-90 transition-all border border-white/5 relative">
+            <BookmarkIcon size={20} />
+            {bookmarks.length > 0 && <span className="absolute top-1 right-1 w-2 h-2 bg-emerald-500 rounded-full border border-emerald-950" />}
+          </button>
         </header>
 
         <div className="flex-1 p-5 space-y-8 max-w-lg mx-auto w-full">
@@ -148,37 +188,53 @@ const Quran: React.FC<QuranProps> = ({ settings }) => {
                <div className="w-16 h-16 bg-white rounded-[2rem] flex items-center justify-center shadow-xl">
                   <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-emerald-800"></div>
                </div>
-               <p className="text-[10px] font-black uppercase tracking-[0.3em] text-emerald-900">Fetching Content...</p>
+               <p className="text-[10px] font-black uppercase tracking-[0.3em] text-emerald-900">Fetching Ayahs...</p>
             </div>
           ) : (
             <>
-              {ayahs.map((ayah, idx) => (
-                <div 
-                  key={idx} 
-                  ref={el => ayahRefs.current[ayah.numberInSurah] = el}
-                  className={`p-7 rounded-[3rem] transition-all border ${playingIndex === idx ? 'bg-emerald-50 border-emerald-200 shadow-xl' : 'bg-white border-white/50 shadow-premium'} ${isBookmarked(ayah.numberInSurah) ? 'border-amber-200' : ''}`}
-                >
-                  <div className="flex justify-between items-center mb-6">
-                    <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-2xl bg-emerald-900 text-white flex items-center justify-center text-[12px] font-black shadow-lg shadow-emerald-900/20">
-                        {ayah.numberInSurah}
-                      </div>
-                      <button onClick={() => toggleBookmark(ayah)} className={`${isBookmarked(ayah.numberInSurah) ? 'text-amber-500' : 'text-slate-200'} transition-colors hover:text-amber-500`}>
-                        <BookmarkIcon size={18} fill={isBookmarked(ayah.numberInSurah) ? "currentColor" : "none"} />
-                      </button>
-                    </div>
-                    <button onClick={() => handlePlayAyah(idx)} className="p-4 bg-emerald-50 text-emerald-800 rounded-2xl hover:bg-emerald-100 transition-all active:scale-90 border border-emerald-100/50">
-                      {playingIndex === idx ? <Pause size={20} fill="currentColor" /> : <Play size={20} fill="currentColor" />}
-                    </button>
-                  </div>
-                  <p className="arabic-text text-right mb-8 leading-[2.6] font-bold text-slate-900" style={{ fontSize: `${settings.fontSize}px`, fontFamily: settings.fontFamily }}>
-                    {ayah.text}
+              {selectedSurah.number !== 1 && selectedSurah.number !== 9 && (
+                <div className="py-10 text-center animate-in fade-in zoom-in duration-700">
+                  <p className="arabic-text text-4xl text-emerald-900/80 font-bold" style={{ fontFamily: settings.fontFamily }}>
+                    {BASMALA_TEXT}
                   </p>
-                  <div className="text-slate-500 text-sm font-medium leading-relaxed italic border-t border-slate-50 pt-6">
-                    {ayah.translation}
+                  <div className="flex justify-center mt-6">
+                     <div className="w-24 h-px bg-gradient-to-r from-transparent via-emerald-200 to-transparent" />
                   </div>
                 </div>
-              ))}
+              )}
+
+              {ayahs.map((ayah, idx) => {
+                const cleanedText = getCleanedAyahText(ayah, selectedSurah.number);
+                const bookmarked = isBookmarked(ayah.numberInSurah);
+                
+                return (
+                  <div 
+                    key={`${selectedSurah.number}_${ayah.numberInSurah}`} 
+                    ref={el => ayahRefs.current[ayah.numberInSurah] = el}
+                    className={`p-7 rounded-[3rem] transition-all border ${playingIndex === idx ? 'bg-emerald-50 border-emerald-200 shadow-xl' : 'bg-white border-white/50 shadow-premium'} ${bookmarked ? 'border-amber-200' : ''}`}
+                  >
+                    <div className="flex justify-between items-center mb-6">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-2xl bg-emerald-900 text-white flex items-center justify-center text-[12px] font-black shadow-lg shadow-emerald-900/20">
+                          {ayah.numberInSurah}
+                        </div>
+                        <button onClick={() => toggleBookmark(ayah)} className={`${bookmarked ? 'text-amber-500' : 'text-slate-200'} transition-all p-2 hover:scale-110 active:scale-95`}>
+                          <BookmarkIcon size={20} fill={bookmarked ? "currentColor" : "none"} />
+                        </button>
+                      </div>
+                      <button onClick={() => handlePlayAyah(idx)} className="p-4 bg-emerald-50 text-emerald-800 rounded-2xl hover:bg-emerald-100 transition-all active:scale-90 border border-emerald-100/50">
+                        {playingIndex === idx ? <Pause size={20} fill="currentColor" /> : <Play size={20} fill="currentColor" />}
+                      </button>
+                    </div>
+                    <p className="arabic-text text-right mb-8 leading-[2.6] font-bold text-slate-900" style={{ fontSize: `${settings.fontSize}px`, fontFamily: settings.fontFamily }}>
+                      {cleanedText}
+                    </p>
+                    <div className="text-slate-500 text-sm font-medium leading-relaxed italic border-t border-slate-50 pt-6">
+                      {ayah.translation}
+                    </div>
+                  </div>
+                );
+              })}
               
               {selectedSurah.number < 114 && (
                 <button 
@@ -204,11 +260,15 @@ const Quran: React.FC<QuranProps> = ({ settings }) => {
           <div className="fixed inset-0 bg-black/60 backdrop-blur-md z-50 flex items-end justify-center" onClick={() => setShowBookmarks(false)}>
             <div className="bg-[#f8f6f0] w-full max-w-lg rounded-t-[4rem] p-10 h-[75vh] flex flex-col shadow-2xl border-t border-white/20" onClick={e => e.stopPropagation()}>
               <div className="flex justify-between items-center mb-8">
-                <h3 className="text-2xl font-black tracking-tight">Your Journey</h3>
+                <h3 className="text-2xl font-black tracking-tight">Bookmarks</h3>
                 <button onClick={() => setShowBookmarks(false)} className="p-3 bg-white rounded-full shadow-sm"><X size={20} /></button>
               </div>
               <div className="flex-1 overflow-y-auto space-y-4 pb-10 no-scrollbar">
-                {bookmarks.length === 0 ? <p className="text-center text-slate-400 py-16 font-bold uppercase tracking-widest text-[10px]">No marks saved</p> : bookmarks.map(b => (
+                {bookmarks.length === 0 ? (
+                  <div className="text-center py-20">
+                    <p className="text-slate-400 font-black uppercase tracking-widest text-[10px]">Your journey starts here</p>
+                  </div>
+                ) : bookmarks.map(b => (
                   <div key={b.id} className="bg-white p-6 rounded-[2.5rem] flex items-center justify-between border border-white/50 shadow-premium hover:border-emerald-200 active:scale-95 transition-all">
                     <button onClick={() => jumpToBookmark(b)} className="flex-1 text-left">
                       <h4 className="font-black text-slate-800 tracking-tight">{b.surahName}</h4>
@@ -243,11 +303,11 @@ const Quran: React.FC<QuranProps> = ({ settings }) => {
               <div className={`w-14 h-14 rounded-3xl flex items-center justify-center font-black text-lg shadow-inner transition-all ${surah.isDownloaded ? 'bg-emerald-900 text-white' : 'bg-emerald-50 text-emerald-800'}`}>
                 {surah.number}
               </div>
-              <div className="flex-1">
-                <h3 className="font-black text-slate-800 tracking-tight text-lg">{surah.englishName}</h3>
-                <p className="text-[10px] text-slate-400 font-black uppercase tracking-widest">{surah.englishNameTranslation}</p>
+              <div className="flex-1 min-w-0">
+                <h3 className="font-black text-slate-800 tracking-tight text-lg truncate">{surah.englishName}</h3>
+                <p className="text-[10px] text-slate-400 font-black uppercase tracking-widest truncate">{surah.englishNameTranslation}</p>
               </div>
-              <div className="flex items-center gap-4">
+              <div className="flex items-center gap-4 shrink-0">
                 <div className="text-right">
                   <p className="arabic-text font-black text-2xl text-emerald-950 leading-none mb-1">{surah.name}</p>
                   {surahBookmarks > 0 && <span className="text-[8px] bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full font-black uppercase tracking-tighter shadow-sm">{surahBookmarks} SAVED</span>}

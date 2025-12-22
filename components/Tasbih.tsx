@@ -1,180 +1,344 @@
 
-import React, { useState, useEffect, useRef } from 'react';
-import { RotateCcw, Target, ChevronUp, ChevronDown, Edit2, X, Check, Heart } from 'lucide-react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
+import { DhikrItem } from '../types';
+import { GoogleGenAI } from '@google/genai';
+import { 
+  Plus, RotateCcw, Target, ChevronLeft, Mic, Image as ImageIcon, 
+  Trash2, Play, Check, X, Loader2, Sparkles, AlertCircle, ChevronRight,
+  TrendingUp, Calendar as CalendarIcon
+} from 'lucide-react';
 
-interface TasbihProps {
-  target: number;
-  session?: { title: string, text?: string, target: number, image?: string } | null;
-  onClearSession?: () => void;
-}
+const Tasbih: React.FC = () => {
+  // Navigation & Data State
+  const [view, setView] = useState<'list' | 'counter' | 'add'>('list');
+  const [dhikrs, setDhikrs] = useState<DhikrItem[]>(() => {
+    const saved = localStorage.getItem('noor_dhikr_list');
+    return saved ? JSON.parse(saved) : [];
+  });
+  const [activeDhikrId, setActiveDhikrId] = useState<string | null>(null);
 
-const Tasbih: React.FC<TasbihProps> = ({ target: initialTarget, session, onClearSession }) => {
-  const [count, setCount] = useState(0);
-  const [currentTarget, setCurrentTarget] = useState(initialTarget);
-  const [isEditingTarget, setIsEditingTarget] = useState(false);
-  const [tempTarget, setTempTarget] = useState(initialTarget.toString());
-  
+  // Form State for Adding
+  const [newTitle, setNewTitle] = useState('');
+  const [newArabic, setNewArabic] = useState('');
+  const [newTarget, setNewTarget] = useState(33);
+  const [newImage, setNewImage] = useState<string | undefined>();
+  const [isProcessingAI, setIsProcessingAI] = useState(false);
+  const [isListening, setIsListening] = useState(false);
+
+  // Audio References
   const tapSound = useRef<HTMLAudioElement | null>(null);
   const finishSound = useRef<HTMLAudioElement | null>(null);
 
   useEffect(() => {
-    setCurrentTarget(initialTarget);
-    setTempTarget(initialTarget.toString());
-    setCount(0); // Reset count when target or session changes
-  }, [initialTarget, session]);
-
-  useEffect(() => {
-    // Ensuring sound is available
     tapSound.current = new Audio('https://www.soundjay.com/buttons/sounds/button-16.mp3');
     finishSound.current = new Audio('https://www.soundjay.com/buttons/sounds/button-30.mp3');
   }, []);
 
+  useEffect(() => {
+    localStorage.setItem('noor_dhikr_list', JSON.stringify(dhikrs));
+  }, [dhikrs]);
+
+  const activeDhikr = useMemo(() => dhikrs.find(d => d.id === activeDhikrId), [dhikrs, activeDhikrId]);
+
+  // --- Handlers ---
+
   const handleIncrement = () => {
-    // Sound on every press - critical requirement
+    if (!activeDhikrId) return;
+
     if (tapSound.current) {
       tapSound.current.currentTime = 0;
-      tapSound.current.play().catch(e => console.error("Sound play blocked", e));
+      tapSound.current.play().catch(() => {});
     }
 
-    if (count + 1 === currentTarget) {
-      if (window.navigator.vibrate) {
-        window.navigator.vibrate([150, 50, 150]);
+    setDhikrs(prev => prev.map(d => {
+      if (d.id === activeDhikrId) {
+        const newCount = d.completedCount + 1;
+        if (newCount === d.targetCount) {
+          if (navigator.vibrate) navigator.vibrate([150, 50, 150]);
+          finishSound.current?.play().catch(() => {});
+        }
+        return { ...d, completedCount: newCount };
       }
-      if (finishSound.current) {
-        finishSound.current.play().catch(() => {});
+      return d;
+    }));
+  };
+
+  const handleResetCount = (id: string) => {
+    if (confirm("Reset progress for this item?")) {
+      setDhikrs(prev => prev.map(d => d.id === id ? { ...d, completedCount: 0 } : d));
+    }
+  };
+
+  const handleDeleteDhikr = (e: React.MouseEvent | React.TouchEvent, id: string) => {
+    // Aggressively stop propagation for both touch and mouse events
+    e.preventDefault();
+    e.stopPropagation();
+    
+    if (window.confirm("Remove this Dhikr from your daily list?")) {
+      setDhikrs(prev => prev.filter(d => d.id !== id));
+    }
+  };
+
+  // --- AI Logic ---
+  const processVoiceToArabic = async () => {
+    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      alert("Speech recognition not supported.");
+      return;
+    }
+
+    const recognition = new SpeechRecognition();
+    recognition.lang = 'en-US'; 
+    recognition.onstart = () => setIsListening(true);
+    recognition.onend = () => setIsListening(false);
+    
+    recognition.onresult = async (event: any) => {
+      const transcript = event.results[0][0].transcript;
+      setIsProcessingAI(true);
+      try {
+        const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+        const response = await ai.models.generateContent({
+          model: 'gemini-3-flash-preview',
+          contents: `Convert this Dhikr description into classical Arabic text only. Transcript: "${transcript}"`,
+        });
+        setNewArabic(response.text?.trim() || '');
+        if (!newTitle) setNewTitle(transcript);
+      } catch (e) {
+        console.error("AI Error", e);
+      } finally {
+        setIsProcessingAI(false);
       }
-    }
-    setCount(prev => prev + 1);
+    };
+    recognition.start();
   };
 
-  const reset = () => {
-    setCount(0);
-  };
-
-  const handleSaveManualTarget = () => {
-    const val = parseInt(tempTarget);
-    if (!isNaN(val) && val > 0) {
-      setCurrentTarget(val);
-      setIsEditingTarget(false);
+  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onloadend = async () => {
+        const base64 = (reader.result as string).split(',')[1];
+        setNewImage(reader.result as string);
+        setIsProcessingAI(true);
+        try {
+          const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+          const response = await ai.models.generateContent({
+            model: 'gemini-2.5-flash-image',
+            contents: {
+              parts: [
+                { inlineData: { data: base64, mimeType: file.type } },
+                { text: "Extract the Arabic Dhikr text from this image." }
+              ]
+            }
+          });
+          setNewArabic(response.text?.trim() || '');
+        } catch (e) {
+          console.error("AI Error", e);
+        } finally {
+          setIsProcessingAI(false);
+        }
+      };
+      reader.readAsDataURL(file);
     }
   };
+
+  const saveNewDhikr = () => {
+    if (!newTitle && !newArabic) return;
+    const item: DhikrItem = {
+      id: Date.now().toString() + Math.random().toString(36).substr(2, 9),
+      title: newTitle || 'Daily Dhikr',
+      arabicText: newArabic,
+      targetCount: newTarget,
+      completedCount: 0,
+      image: newImage,
+      date: new Date().toLocaleDateString()
+    };
+    setDhikrs([item, ...dhikrs]);
+    setView('list');
+    resetForm();
+  };
+
+  const resetForm = () => {
+    setNewTitle(''); setNewArabic(''); setNewTarget(33); setNewImage(undefined);
+  };
+
+  if (view === 'counter' && activeDhikr) {
+    const progress = Math.min((activeDhikr.completedCount / activeDhikr.targetCount) * 100, 100);
+    return (
+      <div className="flex flex-col min-h-screen bg-[#060a08] text-white animate-in fade-in duration-500">
+        <header className="p-6 flex justify-between items-center bg-black/40 backdrop-blur-md">
+          <button onClick={() => setView('list')} className="p-3 bg-white/5 rounded-2xl active:scale-90 transition-all"><ChevronLeft size={20} /></button>
+          <div className="text-center px-4 truncate">
+            <h2 className="text-sm font-black uppercase tracking-[0.2em] text-emerald-500 truncate">{activeDhikr.title}</h2>
+            <p className="text-[9px] font-bold text-white/30 tracking-widest">{activeDhikr.completedCount} / {activeDhikr.targetCount}</p>
+          </div>
+          <button onClick={() => handleResetCount(activeDhikr.id)} className="p-3 bg-white/5 rounded-2xl active:scale-90 transition-all"><RotateCcw size={20} className="text-rose-400" /></button>
+        </header>
+
+        <main className="flex-1 flex flex-col items-center justify-center p-6 pb-20">
+          <div className="w-full text-center mb-12 px-4">
+            {activeDhikr.image ? (
+              <div className="w-full h-40 rounded-3xl overflow-hidden border border-emerald-500/20 shadow-2xl mb-4">
+                <img src={activeDhikr.image} className="w-full h-full object-cover" alt="Dhikr" />
+              </div>
+            ) : (
+              <p className="arabic-text text-4xl text-emerald-50 drop-shadow-[0_0_15px_rgba(16,185,129,0.3)] leading-relaxed font-bold">
+                {activeDhikr.arabicText || activeDhikr.title}
+              </p>
+            )}
+          </div>
+
+          <div className="relative w-72 h-72 flex items-center justify-center mb-16">
+            <svg className="absolute inset-0 w-full h-full -rotate-90">
+              <circle cx="50%" cy="50%" r="46%" fill="none" stroke="rgba(255,255,255,0.03)" strokeWidth="8" />
+              <circle 
+                cx="50%" cy="50%" r="46%" fill="none" stroke="#10b981" strokeWidth="12" 
+                strokeDasharray="289%" strokeDashoffset={`${289 * (1 - progress/100)}%`}
+                strokeLinecap="round" className="transition-all duration-500 ease-out"
+                strokeOpacity={0.9}
+              />
+            </svg>
+            <div className="text-center">
+              <span className="text-8xl font-black tabular-nums tracking-tighter text-emerald-50 block">{activeDhikr.completedCount}</span>
+              <span className="text-[10px] font-black uppercase tracking-[0.4em] text-emerald-900 bg-emerald-400/10 px-4 py-1.5 rounded-full">Taps</span>
+            </div>
+          </div>
+
+          <button 
+            onClick={handleIncrement}
+            className="w-64 h-64 rounded-full bg-gradient-to-tr from-emerald-950 via-emerald-800 to-emerald-600 shadow-[0_20px_100px_-20px_rgba(16,185,129,0.6)] active:scale-90 transition-all duration-75 flex items-center justify-center border-4 border-white/5 relative group overflow-hidden"
+          >
+             <div className="absolute inset-0 bg-white/5 group-active:bg-transparent" />
+             <span className="text-3xl font-black text-white drop-shadow-md uppercase tracking-[0.2em]">Tasbih</span>
+          </button>
+        </main>
+      </div>
+    );
+  }
 
   return (
-    <div className="flex flex-col min-h-screen bg-[#08120d] text-white p-6">
-      <div className="flex justify-between items-start mb-6">
+    <div className="p-6 bg-[#f2f6f4] min-h-screen pb-40">
+      <header className="flex justify-between items-end mb-10 px-2">
         <div>
-          <h1 className="text-xl font-black text-emerald-400 tracking-tighter">
-            {session ? 'Dua Recitation' : 'Digital Tasbih'}
-          </h1>
-          <p className="text-[10px] text-emerald-800 font-black uppercase tracking-widest">
-            {session ? session.title : 'Premium Dhikr'}
-          </p>
-        </div>
-        <div className="flex flex-col items-end gap-2">
-            <button 
-              onClick={() => setIsEditingTarget(true)}
-              className="bg-white/5 hover:bg-white/10 rounded-2xl px-4 py-2 flex items-center gap-2 border border-white/10 transition-colors"
-            >
-              <Target size={14} className="text-emerald-500" />
-              <span className="text-sm font-bold tabular-nums">{currentTarget}</span>
-              <Edit2 size={12} className="text-white/30" />
-            </button>
-            {session && (
-                <button 
-                  onClick={onClearSession}
-                  className="bg-rose-500/10 text-rose-500 text-[9px] font-black uppercase px-3 py-1 rounded-full border border-rose-500/20"
-                >
-                    Exit Session
-                </button>
-            )}
-        </div>
-      </div>
-
-      <div className="flex-1 flex flex-col items-center justify-center">
-        {/* Dua/Dhikr Text Display if in Session */}
-        {session && (
-            <div className="w-full text-center mb-8 px-4 animate-in fade-in slide-in-from-top-4 duration-500">
-                {session.image ? (
-                    <div className="max-w-[200px] mx-auto h-24 rounded-2xl overflow-hidden border border-emerald-500/20 mb-4 shadow-lg shadow-emerald-500/10">
-                        <img src={session.image} className="w-full h-full object-cover" alt="Dua" />
-                    </div>
-                ) : (
-                    <p className={`arabic-text text-2xl mb-2 text-emerald-200 leading-relaxed font-bold ${session.text?.length && session.text.length > 50 ? 'text-lg' : 'text-2xl'}`}>
-                        {session.text}
-                    </p>
-                )}
-            </div>
-        )}
-
-        {/* Main Display Area */}
-        <div className="relative w-full max-w-xs aspect-square flex items-center justify-center mb-10">
-           <div className="absolute inset-0 border-8 border-emerald-900/10 rounded-full" />
-           <svg className="absolute inset-0 w-full h-full -rotate-90">
-            <circle 
-              cx="50%" cy="50%" r="45%" fill="none" stroke="#10b981" strokeWidth="12" 
-              strokeDasharray="283%" strokeDashoffset={`${283 * (1 - Math.min(count / currentTarget, 1))}%`}
-              strokeLinecap="round" className="transition-all duration-300 ease-out"
-              strokeOpacity={0.8}
-            />
-          </svg>
-          <div className="text-center z-10">
-            <p className="text-[7.5rem] leading-none font-black mb-1 tabular-nums drop-shadow-lg text-emerald-50">{count}</p>
-            <p className="text-[10px] text-emerald-500/60 font-black uppercase tracking-widest">Count Completed</p>
+          <div className="flex items-center gap-2 mb-1">
+             <CalendarIcon size={14} className="text-emerald-500" />
+             <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })}</span>
           </div>
+          <h1 className="text-4xl font-black text-slate-800 tracking-tighter">My Dhikr</h1>
         </div>
-
-        {/* The Tap Button */}
         <button 
-          onClick={handleIncrement} 
-          className="w-60 h-60 rounded-full bg-gradient-to-tr from-emerald-950 via-emerald-700 to-emerald-500 shadow-[0_25px_80px_-20px_rgba(16,185,129,0.5)] active:scale-[0.85] transition-all duration-75 flex items-center justify-center relative overflow-hidden group"
+          onClick={() => setView('add')}
+          className="p-5 bg-emerald-950 text-white rounded-[2.5rem] shadow-2xl active:scale-95 transition-all border border-white/5 flex items-center gap-3"
         >
-          <div className="absolute inset-2 border-4 border-white/5 rounded-full group-active:scale-95 transition-transform" />
-          <div className="absolute inset-0 bg-white/5 group-active:bg-white/10 transition-colors" />
-          <span className="text-4xl font-black tracking-tighter text-white drop-shadow-md">TAP</span>
+          <Plus size={24} />
         </button>
+      </header>
 
-        {/* Controls */}
-        <div className="mt-16 w-full max-w-sm bg-white/5 backdrop-blur-xl rounded-[3rem] p-6 border border-white/10">
-          <div className="flex items-center justify-between mb-4">
-            <p className="text-[10px] font-black text-white/30 uppercase tracking-[0.3em]">Adjustment</p>
-            <button onClick={reset} className="text-rose-500 text-[10px] font-black uppercase flex items-center gap-1.5 hover:text-rose-400 transition-colors bg-rose-500/5 px-3 py-1.5 rounded-full">
-              <RotateCcw size={14} /> Clear Count
-            </button>
-          </div>
-          <div className="flex justify-center items-center gap-8">
-             <button onClick={() => setCurrentTarget(Math.max(1, currentTarget - 10))} className="p-5 bg-white/5 rounded-3xl hover:bg-white/10 transition-colors border border-white/5">
-               <ChevronDown size={24} />
-             </button>
-             <span className="text-4xl font-black w-24 text-center text-emerald-400 tabular-nums">{currentTarget}</span>
-             <button onClick={() => setCurrentTarget(currentTarget + 10)} className="p-5 bg-white/5 rounded-3xl hover:bg-white/10 transition-colors border border-white/5">
-               <ChevronUp size={24} />
-             </button>
-          </div>
-        </div>
+      <div className="grid grid-cols-2 gap-4 mb-8">
+         <div className="bg-white p-6 rounded-[2.5rem] shadow-premium border border-white flex flex-col gap-1">
+            <TrendingUp size={16} className="text-emerald-500 mb-1" />
+            <span className="text-xl font-black text-slate-800 tabular-nums">{dhikrs.reduce((acc, curr) => acc + curr.completedCount, 0)}</span>
+            <span className="text-[9px] font-black text-slate-300 uppercase tracking-widest">Total Taps</span>
+         </div>
+         <div className="bg-emerald-900 p-6 rounded-[2.5rem] shadow-xl text-white flex flex-col gap-1">
+            <Target size={16} className="text-emerald-400 mb-1" />
+            <span className="text-xl font-black tabular-nums">{dhikrs.filter(d => d.completedCount >= d.targetCount).length}</span>
+            <span className="text-[9px] font-black text-emerald-400/60 uppercase tracking-widest">Finished</span>
+         </div>
       </div>
 
-      {/* Manual Input Modal */}
-      {isEditingTarget && (
-        <div className="fixed inset-0 bg-black/90 backdrop-blur-xl z-[100] flex items-center justify-center p-6">
-          <div className="bg-[#0c1a12] w-full max-w-xs p-10 rounded-[3.5rem] border border-white/10 shadow-2xl animate-in zoom-in duration-200">
-             <div className="flex justify-between items-center mb-8">
-                <h3 className="font-black text-2xl tracking-tight text-white">Target</h3>
-                <button onClick={() => setIsEditingTarget(false)} className="p-2 bg-white/5 rounded-full"><X size={20} /></button>
+      <div className="space-y-4">
+        {dhikrs.length === 0 ? (
+          <div className="py-20 flex flex-col items-center text-center px-10">
+             <div className="w-20 h-20 bg-white rounded-[2.5rem] flex items-center justify-center shadow-premium mb-6">
+                <Sparkles size={32} className="text-emerald-200" />
              </div>
-             <input 
-               type="number"
-               value={tempTarget}
-               onChange={(e) => setTempTarget(e.target.value)}
-               placeholder="0"
-               className="w-full bg-white/5 border border-white/10 rounded-3xl p-8 text-5xl font-black text-center text-emerald-400 focus:outline-none focus:border-emerald-500/50 mb-8 shadow-inner"
-               autoFocus
-             />
-             <button 
-               onClick={handleSaveManualTarget}
-               className="w-full bg-emerald-600 hover:bg-emerald-500 p-6 rounded-3xl font-black uppercase tracking-widest flex items-center justify-center gap-3 active:scale-95 transition-all shadow-xl shadow-emerald-600/20"
-             >
-                <Check size={24} /> Set Count
-             </button>
+             <p className="text-slate-400 font-bold text-sm leading-relaxed italic">Add your daily targets to stay consistent.</p>
+          </div>
+        ) : (
+          dhikrs.map((dhikr) => {
+            const progress = Math.min((dhikr.completedCount / dhikr.targetCount) * 100, 100);
+            return (
+              <div 
+                key={dhikr.id}
+                onClick={() => { setActiveDhikrId(dhikr.id); setView('counter'); }}
+                className="group relative bg-white p-6 rounded-[2.8rem] shadow-premium border border-white active:scale-[0.98] transition-all cursor-pointer overflow-hidden"
+              >
+                <div className="flex items-center gap-5 relative z-10">
+                  <div className={`w-14 h-14 rounded-3xl flex items-center justify-center transition-all ${progress >= 100 ? 'bg-emerald-600 text-white' : 'bg-emerald-50 text-emerald-800'}`}>
+                    {progress >= 100 ? <Check size={24} /> : <span className="text-xs font-black">{Math.round(progress)}%</span>}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <h3 className="font-black text-slate-800 tracking-tight text-lg truncate mb-1">{dhikr.title}</h3>
+                    <div className="flex items-center gap-3">
+                       <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest tabular-nums">{dhikr.completedCount} / {dhikr.targetCount}</span>
+                       <div className="h-1.5 flex-1 bg-slate-50 rounded-full overflow-hidden">
+                          <div className="h-full bg-emerald-500 transition-all duration-700" style={{ width: `${progress}%` }} />
+                       </div>
+                    </div>
+                  </div>
+                  <button 
+                    type="button"
+                    onPointerDown={(e) => handleDeleteDhikr(e, dhikr.id)}
+                    className="p-4 text-slate-300 hover:text-rose-500 transition-colors bg-slate-50 rounded-2xl active:scale-90"
+                    title="Remove Dhikr"
+                  >
+                    <Trash2 size={16} />
+                  </button>
+                </div>
+              </div>
+            );
+          })
+        )}
+      </div>
+
+      {view === 'add' && (
+        <div className="fixed inset-0 bg-emerald-950/40 backdrop-blur-md z-[100] flex items-end justify-center p-4 animate-in fade-in" onClick={() => { if(!isProcessingAI) setView('list'); }}>
+          <div className="bg-white w-full max-w-lg rounded-t-[4rem] p-8 shadow-2xl animate-in slide-in-from-bottom border-t border-white" onClick={e => e.stopPropagation()}>
+            <header className="flex justify-between items-center mb-10">
+              <h3 className="font-black text-2xl tracking-tighter">New Goal</h3>
+              <button onClick={() => setView('list')} className="p-3 bg-slate-50 rounded-full"><X size={20} /></button>
+            </header>
+
+            <div className="space-y-6 max-h-[60vh] overflow-y-auto no-scrollbar pb-10">
+               <div>
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em] block mb-3 ml-2">Name</label>
+                  <input value={newTitle} onChange={e => setNewTitle(e.target.value)} placeholder="e.g. Istighfar" className="w-full bg-slate-50 border border-slate-100 rounded-[1.8rem] p-5 text-sm font-bold outline-none" />
+               </div>
+
+               <div className="grid grid-cols-2 gap-4">
+                  <button onClick={processVoiceToArabic} className={`p-6 rounded-[2.5rem] border-2 border-dashed flex flex-col items-center gap-3 transition-all ${isListening ? 'bg-rose-50 border-rose-200' : 'bg-slate-50 border-slate-100'}`}>
+                    <Mic size={24} className={isListening ? 'animate-pulse text-rose-500' : 'text-slate-300'} />
+                    <span className="text-[10px] font-black uppercase tracking-widest">Voice to Arabic</span>
+                  </button>
+                  <div className="relative group cursor-pointer">
+                    <input type="file" accept="image/*" onChange={handleImageUpload} className="absolute inset-0 opacity-0 cursor-pointer z-10" />
+                    <div className="p-6 rounded-[2.5rem] bg-slate-50 border-2 border-dashed border-slate-100 flex flex-col items-center gap-3">
+                       <ImageIcon size={24} className="text-slate-300" />
+                       <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">Image to Arabic</span>
+                    </div>
+                  </div>
+               </div>
+
+               {(newArabic || isProcessingAI) && (
+                  <div className="bg-emerald-50 p-6 rounded-[2.5rem] border border-emerald-100 relative">
+                    {isProcessingAI && <div className="absolute inset-0 bg-white/60 flex items-center justify-center z-10"><Loader2 size={24} className="animate-spin text-emerald-600" /></div>}
+                    <textarea value={newArabic} onChange={e => setNewArabic(e.target.value)} className="w-full bg-transparent border-none text-right arabic-text text-3xl font-bold resize-none h-24" />
+                  </div>
+               )}
+
+               <div>
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-4 ml-2">Target</label>
+                  <div className="flex items-center gap-4 bg-slate-50 p-6 rounded-[2rem]">
+                    <input type="range" min="1" max="1000" step="1" value={newTarget} onChange={e => setNewTarget(parseInt(e.target.value))} className="flex-1 accent-emerald-600" />
+                    <span className="text-xl font-black text-emerald-950 tabular-nums w-16 text-right">{newTarget}</span>
+                  </div>
+               </div>
+
+               <button onClick={saveNewDhikr} disabled={isProcessingAI || (!newTitle && !newArabic)} className="w-full bg-emerald-950 text-white p-7 rounded-[2.8rem] font-black uppercase tracking-[0.2em] shadow-xl disabled:opacity-30">
+                 Create Daily Goal
+               </button>
+            </div>
           </div>
         </div>
       )}

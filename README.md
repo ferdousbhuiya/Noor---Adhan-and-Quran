@@ -1,46 +1,40 @@
 
-# Noor - Islamic Companion App
+# 🌙 Noor - Islamic Companion App
 
-A high-performance, offline-first Islamic application built with React and the Gemini API.
+A high-performance, offline-first Islamic application built with React, Tailwind CSS, and Google Gemini API. Designed for spiritual consistency with a premium user experience.
 
-## 🔒 Security & Deployment
+## 🚀 Key Features
+- **Holy Quran**: Read and listen with multi-Qari support. Offline mode allows downloading Surahs to your device.
+- **Prayer Times**: Highly accurate timings with 12-hour AM/PM format and Adhan notifications.
+- **Digital Tasbih**: Interactive counter with haptic feedback, AI voice-to-arabic, and image-to-arabic conversion.
+- **Dua Library**: Personal supplication manager with benefit tracking and recitation modes.
+- **Explore Nearby**: Find Masjids and Halal restaurants using AI-powered grounding.
+- **Qiblah Finder**: Real-time compass for accurate prayer direction.
 
-### 1. Local Development
-To run this app locally with your own API key:
-1. Create a file named `.env` in the root directory.
-2. Add your key: `API_KEY=YOUR_ACTUAL_KEY_HERE`
-3. The `.gitignore` file ensures this secret is never uploaded to GitHub.
+## 📦 Deployment Guide
 
-### 2. Deploying to GitHub (Securely)
-Since this is a frontend application, you should use a deployment platform that supports **Environment Variables** (like Vercel, Netlify, or GitHub Actions).
+### 1. GitHub Pages (Recommended)
+This app is perfect for GitHub Pages. 
+1. Push your code to a repository.
+2. Use a build tool like Vite or a simple GitHub Action to deploy.
+3. **Environment Variables**: Since this is a client-side app, ensure your `API_KEY` is set up in your hosting provider's secrets (e.g., Vercel Secrets or GitHub Action Secrets).
 
-#### Using Vercel/Netlify:
-1. Connect your GitHub repository to the platform.
-2. In the **Project Settings** > **Environment Variables** section, add:
-   - Key: `API_KEY`
-   - Value: `[Your Gemini API Key]`
-3. Deploy. The platform will inject the key into `process.env.API_KEY` automatically.
-
-#### Using GitHub Actions (for GitHub Pages):
-If you are using a build tool to deploy to GitHub Pages, you must use **GitHub Secrets**:
-1. Go to your repository on GitHub.
-2. Navigate to **Settings** > **Secrets and variables** > **Actions**.
-3. Create a **New repository secret** named `API_KEY`.
-4. In your deployment workflow (`.github/workflows/deploy.yml`), ensure the build step has access to the secret:
-   ```yaml
-   env:
-     API_KEY: ${{ secrets.API_KEY }}
-   ```
-
-## 🌙 Features
-- **Offline Quran**: Download Surahs for reading and recitation without internet.
-- **Dynamic Adhan**: Accurate prayer times with multiple calculation methods and Adhan voices.
-- **Smart Explore**: Find nearby Masjids and Halal food using Gemini AI Grounding.
-- **Interactive Tasbih**: Haptic feedback and target-based digital counter.
-- **Qiblah Finder**: Real-time compass orientation.
+### 2. Local Setup
+1. Clone the repository.
+2. Ensure you have Node.js installed.
+3. Install dependencies: `npm install`
+4. Create a `.env` file and add: `API_KEY=your_gemini_api_key_here`
+5. Run the dev server: `npm run dev`
 
 ## 🛠 Tech Stack
-- **Frontend**: React, Tailwind CSS, Lucide Icons
-- **AI**: Google Gemini API (@google/genai)
-- **Storage**: IndexedDB (LocalDB) for offline support
-- **PWA**: Service Workers & Web App Manifest
+- **Framework**: React 19
+- **Styling**: Tailwind CSS (with Glassmorphism)
+- **Icons**: Lucide React
+- **AI**: @google/genai (Gemini 2.5/3.0)
+- **Database**: IndexedDB (Offline Persistence)
+
+## 🔒 Privacy & Offline Support
+Noor uses **IndexedDB** to store your downloaded Quran content and settings directly in your browser's memory. No data is sent to a server except for API calls to fetch prayer times and AI processing.
+
+---
+*Built with heart for the Ummah.*

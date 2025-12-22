@@ -55,15 +55,31 @@ export interface AdhanSettings {
   styleId: string;
   method: number;
   school: number;
+  fajrAngle?: number;
+  ishaAngle?: number;
   notifications: Record<string, boolean>;
 }
 
+export interface DhikrItem {
+  id: string;
+  title: string;
+  arabicText?: string;
+  translation?: string;
+  targetCount: number;
+  completedCount: number;
+  image?: string;
+  date: string;
+}
+
+/**
+ * Represents a Supplication (Dua) stored in the user's library.
+ */
 export interface Dua {
   id: string;
   title: string;
   arabicText?: string;
-  translation: string;
-  benefit: string;
+  translation?: string;
+  benefit?: string;
   targetCount: number;
   currentCount: number;
   image?: string;

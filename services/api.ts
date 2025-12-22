@@ -6,7 +6,6 @@ const QURAN_API_BASE = 'https://api.alquran.cloud/v1';
 const PRAYER_API_BASE = 'https://api.aladhan.com/v1';
 
 export const fetchSurahs = async (): Promise<Surah[]> => {
-  // Check DB first
   const localSurahs = await db.getSurahs();
   if (localSurahs.length > 0) return localSurahs;
 
@@ -21,7 +20,6 @@ export const fetchSurahs = async (): Promise<Surah[]> => {
 };
 
 export const fetchSurahAyahs = async (surahNumber: number, reciter: string = 'ar.alafasy', translation: string = 'en.sahih'): Promise<Ayah[]> => {
-  // Check if downloaded
   const localAyahs = await db.getSurahContent(surahNumber);
   if (localAyahs.length > 0) return localAyahs;
 
@@ -39,20 +37,40 @@ export const fetchSurahAyahs = async (surahNumber: number, reciter: string = 'ar
   }));
 };
 
-export const fetchPrayerTimes = async (latitude: number, longitude: number, method: number = 2, school: number = 0): Promise<{ times: PrayerTimes; hijriDate: string }> => {
+export const fetchPrayerTimes = async (
+  latitude: number, 
+  longitude: number, 
+  method: number = 2, 
+  school: number = 0,
+  fajrAngle?: number,
+  ishaAngle?: number
+): Promise<{ times: PrayerTimes; hijriDate: string }> => {
   const dateStr = new Date().toISOString().split('T')[0];
   
-  // Try local cache first
-  const localTimes = await db.getPrayerTimes(dateStr);
+  // Construct URL with custom angles if provided
+  let url = `${PRAYER_API_BASE}/timings?latitude=${latitude}&longitude=${longitude}&method=${method}&school=${school}`;
+  
+  if (fajrAngle || ishaAngle) {
+    // If angles are provided, use method 99 (Custom) or append to existing method
+    // Aladhan API allows methodSettings for custom tuning
+    const settings = `${fajrAngle || 'null'},null,${ishaAngle || 'null'}`;
+    url += `&methodSettings=${settings}`;
+  }
+
+  // Use a unique cache key for settings combinations
+  const cacheKey = `${dateStr}_${method}_${school}_${fajrAngle || 0}_${ishaAngle || 0}`;
+  const localTimes = await db.getPrayerTimes(cacheKey);
   
   try {
-    const res = await fetch(`${PRAYER_API_BASE}/timings?latitude=${latitude}&longitude=${longitude}&method=${method}&school=${school}`);
+    const res = await fetch(url);
     const data = await res.json();
+    
+    if (!data.data) throw new Error("Invalid API response");
+
     const timings = data.data.timings;
     const hijri = data.data.date.hijri;
     
-    // Background save
-    db.saveMonthlyPrayer(dateStr, timings);
+    db.saveMonthlyPrayer(cacheKey, timings);
     
     return {
       times: timings,
