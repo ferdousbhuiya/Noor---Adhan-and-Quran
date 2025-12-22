@@ -2,7 +2,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Surah, Ayah, QuranSettings, Bookmark } from '../types';
 import { fetchSurahs, fetchSurahAyahs } from '../services/api';
-import { ChevronLeft, Play, Pause, Bookmark as BookmarkIcon, Trash2, X, ChevronRight } from 'lucide-react';
+import { db } from '../services/db';
+import { ChevronLeft, Play, Pause, Bookmark as BookmarkIcon, Trash2, X, ChevronRight, Download, CheckCircle, Loader2 } from 'lucide-react';
 
 interface QuranProps {
   settings: QuranSettings;
@@ -13,6 +14,7 @@ const Quran: React.FC<QuranProps> = ({ settings }) => {
   const [selectedSurah, setSelectedSurah] = useState<Surah | null>(null);
   const [ayahs, setAyahs] = useState<Ayah[]>([]);
   const [loading, setLoading] = useState(false);
+  const [downloading, setDownloading] = useState<number | null>(null);
   const [showBookmarks, setShowBookmarks] = useState(false);
   const [bookmarks, setBookmarks] = useState<Bookmark[]>(() => {
     const saved = localStorage.getItem('noor_bookmarks');
@@ -52,6 +54,28 @@ const Quran: React.FC<QuranProps> = ({ settings }) => {
   useEffect(() => {
     localStorage.setItem('noor_bookmarks', JSON.stringify(bookmarks));
   }, [bookmarks]);
+
+  const handleDownload = async (e: React.MouseEvent, surah: Surah) => {
+    e.stopPropagation();
+    if (surah.isDownloaded) {
+      if (confirm(`Remove ${surah.englishName} from offline storage?`)) {
+        await db.removeSurahContent(surah.number);
+        setSurahs(surahs.map(s => s.number === surah.number ? { ...s, isDownloaded: false } : s));
+      }
+      return;
+    }
+
+    setDownloading(surah.number);
+    try {
+      const content = await fetchSurahAyahs(surah.number, settings.reciterId, settings.translationId);
+      await db.saveSurahContent(surah.number, content);
+      setSurahs(surahs.map(s => s.number === surah.number ? { ...s, isDownloaded: true } : s));
+    } catch (e) {
+      alert("Download failed. Check your connection.");
+    } finally {
+      setDownloading(null);
+    }
+  };
 
   const isBookmarked = (ayahNumber: number) => {
     return bookmarks.some(b => b.surahNumber === selectedSurah?.number && b.ayahNumber === ayahNumber);
@@ -124,7 +148,7 @@ const Quran: React.FC<QuranProps> = ({ settings }) => {
                <div className="w-16 h-16 bg-white rounded-[2rem] flex items-center justify-center shadow-xl">
                   <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-emerald-800"></div>
                </div>
-               <p className="text-[10px] font-black uppercase tracking-[0.3em] text-emerald-900">Fetching Ayahs...</p>
+               <p className="text-[10px] font-black uppercase tracking-[0.3em] text-emerald-900">Fetching Content...</p>
             </div>
           ) : (
             <>
@@ -216,16 +240,24 @@ const Quran: React.FC<QuranProps> = ({ settings }) => {
           const surahBookmarks = bookmarks.filter(b => b.surahNumber === surah.number).length;
           return (
             <button key={surah.number} onClick={() => setSelectedSurah(surah)} className="w-full bg-white p-6 rounded-[2.8rem] border border-white/50 shadow-premium flex items-center gap-5 text-left active:scale-[0.97] transition-all group hover:border-emerald-100">
-              <div className="w-14 h-14 rounded-3xl bg-emerald-50 text-emerald-800 flex items-center justify-center font-black text-lg shadow-inner group-hover:bg-emerald-900 group-hover:text-white transition-all">
+              <div className={`w-14 h-14 rounded-3xl flex items-center justify-center font-black text-lg shadow-inner transition-all ${surah.isDownloaded ? 'bg-emerald-900 text-white' : 'bg-emerald-50 text-emerald-800'}`}>
                 {surah.number}
               </div>
               <div className="flex-1">
                 <h3 className="font-black text-slate-800 tracking-tight text-lg">{surah.englishName}</h3>
                 <p className="text-[10px] text-slate-400 font-black uppercase tracking-widest">{surah.englishNameTranslation}</p>
               </div>
-              <div className="text-right">
-                <p className="arabic-text font-black text-2xl text-emerald-950 leading-none mb-1">{surah.name}</p>
-                {surahBookmarks > 0 && <span className="text-[8px] bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full font-black uppercase tracking-tighter shadow-sm">{surahBookmarks} SAVED</span>}
+              <div className="flex items-center gap-4">
+                <div className="text-right">
+                  <p className="arabic-text font-black text-2xl text-emerald-950 leading-none mb-1">{surah.name}</p>
+                  {surahBookmarks > 0 && <span className="text-[8px] bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full font-black uppercase tracking-tighter shadow-sm">{surahBookmarks} SAVED</span>}
+                </div>
+                <button 
+                  onClick={(e) => handleDownload(e, surah)}
+                  className={`p-2 rounded-xl transition-all ${surah.isDownloaded ? 'text-emerald-600 bg-emerald-50' : 'text-slate-300 hover:text-emerald-500 bg-slate-50'}`}
+                >
+                  {downloading === surah.number ? <Loader2 size={18} className="animate-spin" /> : surah.isDownloaded ? <CheckCircle size={18} /> : <Download size={18} />}
+                </button>
               </div>
             </button>
           );

@@ -4,6 +4,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="theme-color" content="#064e3b">
     <title>Noor - Islamic Companion</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -18,6 +21,7 @@
             background-color: var(--app-bg);
             -webkit-tap-highlight-color: transparent;
             color: #1a2e25;
+            user-select: none;
         }
         .arabic-text {
             font-family: 'Amiri', serif;
@@ -41,10 +45,9 @@
         .shadow-premium {
             box-shadow: 0 10px 30px -5px rgba(0, 0, 0, 0.05), 0 4px 12px -2px rgba(0, 0, 0, 0.03);
         }
-        /* Mobile responsive height adjustments */
         @supports (-webkit-touch-callout: none) {
             .min-h-screen {
-                min-h: -webkit-fill-available;
+                min-height: -webkit-fill-available;
             }
         }
     </style>
@@ -62,5 +65,13 @@
 </head>
 <body class="overflow-x-hidden antialiased">
     <div id="root"></div>
+    <script>
+        // Simple Service Worker for basic PWA offline support
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('/sw.js').catch(err => console.log('SW registration failed:', err));
+            });
+        }
+    </script>
 </body>
 </html>

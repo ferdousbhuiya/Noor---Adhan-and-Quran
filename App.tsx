@@ -10,6 +10,7 @@ import DuaView from './components/Dua';
 import Qiblah from './components/Qiblah';
 import Explore from './components/Explore';
 import SettingsView from './components/Settings';
+import { db } from './services/db';
 import { Home as HomeIcon, BookOpen, Clock, Heart, CircleDot, Settings as SettingsIcon, Compass, Search } from 'lucide-react';
 
 const DEFAULT_SETTINGS: AppSettings = {
@@ -33,20 +34,24 @@ const DEFAULT_SETTINGS: AppSettings = {
 const App: React.FC = () => {
   const [activeSection, setActiveSection] = useState<AppSection>(AppSection.Home);
   const [location, setLocation] = useState<{lat: number, lng: number} | null>(null);
+  const [isDbReady, setIsDbReady] = useState(false);
   const [settings, setSettings] = useState<AppSettings>(() => {
     const saved = localStorage.getItem('noor_settings');
     return saved ? JSON.parse(saved) : DEFAULT_SETTINGS;
   });
 
-  // Track if we are reciting a specific Dua in the Tasbih screen
   const [dhikrSession, setDhikrSession] = useState<{ title: string, text?: string, target: number, image?: string } | null>(null);
 
   useEffect(() => {
+    db.init().then(() => setIsDbReady(true));
+    
     navigator.geolocation.getCurrentPosition(
       (pos) => setLocation({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
       (err) => console.error("Geolocation failed", err)
     );
   }, []);
+
+  if (!isDbReady) return null;
 
   const handleSaveSettings = (newSettings: AppSettings) => {
     setSettings(newSettings);
@@ -97,7 +102,6 @@ const App: React.FC = () => {
         {renderSection()}
       </main>
 
-      {/* Modern Floating Glass Navigation */}
       <div className="fixed bottom-6 left-6 right-6 z-50 flex justify-center pointer-events-none">
         <nav className="glass-nav flex justify-around items-center h-18 w-full max-w-sm px-4 rounded-[2.5rem] border border-white/40 shadow-2xl pointer-events-auto overflow-x-auto no-scrollbar py-2">
             <NavItem icon={<HomeIcon size={18} />} label="Home" active={activeSection === AppSection.Home} onClick={() => setActiveSection(AppSection.Home)} />

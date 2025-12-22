@@ -6,15 +6,18 @@ export interface Surah {
   englishNameTranslation: string;
   numberOfAyahs: number;
   revelationType: string;
+  isDownloaded?: boolean;
 }
 
 export interface Ayah {
+  id?: string;
   number: number;
   audio: string;
   text: string;
   numberInSurah: number;
   juz: number;
   translation?: string;
+  surahNumber?: number;
 }
 
 export interface PrayerTimes {
