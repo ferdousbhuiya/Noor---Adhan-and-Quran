@@ -1,4 +1,3 @@
-
 import { Surah, Ayah, PrayerTimes } from '../types';
 import { db } from './db';
 
@@ -44,20 +43,16 @@ export const fetchPrayerTimes = async (
   school: number = 0,
   fajrAngle?: number,
   ishaAngle?: number
-): Promise<{ times: PrayerTimes; hijriDate: string }> => {
+): Promise<{ times: PrayerTimes; hijriDate: string; hijriArabic: string; locationName: string }> => {
   const dateStr = new Date().toISOString().split('T')[0];
   
-  // Construct URL with custom angles if provided
   let url = `${PRAYER_API_BASE}/timings?latitude=${latitude}&longitude=${longitude}&method=${method}&school=${school}`;
   
   if (fajrAngle || ishaAngle) {
-    // If angles are provided, use method 99 (Custom) or append to existing method
-    // Aladhan API allows methodSettings for custom tuning
     const settings = `${fajrAngle || 'null'},null,${ishaAngle || 'null'}`;
     url += `&methodSettings=${settings}`;
   }
 
-  // Use a unique cache key for settings combinations
   const cacheKey = `${dateStr}_${method}_${school}_${fajrAngle || 0}_${ishaAngle || 0}`;
   const localTimes = await db.getPrayerTimes(cacheKey);
   
@@ -74,10 +69,12 @@ export const fetchPrayerTimes = async (
     
     return {
       times: timings,
-      hijriDate: `${hijri.day} ${hijri.month.en} ${hijri.year} AH`
+      hijriDate: `${hijri.day} ${hijri.month.en} ${hijri.year} AH`,
+      hijriArabic: `${hijri.day} ${hijri.month.ar} ${hijri.year} هـ`,
+      locationName: data.data.meta.timezone
     };
   } catch (e) {
-    if (localTimes) return { times: localTimes, hijriDate: 'Offline Mode' };
+    if (localTimes) return { times: localTimes, hijriDate: 'Offline Mode', hijriArabic: '', locationName: '' };
     throw e;
   }
 };

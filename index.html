@@ -89,13 +89,14 @@
             right: 20px;
             background: #7f1d1d;
             color: white;
-            padding: 15px;
-            border-radius: 16px;
-            font-size: 11px;
+            padding: 20px;
+            border-radius: 20px;
+            font-size: 12px;
             display: none;
             z-index: 10000;
             box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.3);
             font-family: monospace;
+            white-space: pre-wrap;
         }
     </style>
     <script>
@@ -104,7 +105,7 @@
             const display = document.getElementById('error-display');
             if (display) {
                 display.style.display = 'block';
-                display.innerText = 'Initialization Error: ' + e.message + '\nFile: ' + e.filename;
+                display.innerText = 'App Load Error:\n' + e.message + '\n\nSource: ' + e.filename + ':' + e.lineno;
             }
         });
     </script>
