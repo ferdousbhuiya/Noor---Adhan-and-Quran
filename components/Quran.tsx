@@ -3,15 +3,16 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Surah, Ayah, QuranSettings, Bookmark } from '../types';
 import { fetchSurahs, fetchSurahAyahs } from '../services/api';
 import { db } from '../services/db';
-import { ChevronLeft, Play, Pause, Bookmark as BookmarkIcon, Trash2, X, ChevronRight, Download, CheckCircle, Loader2 } from 'lucide-react';
+import { ChevronLeft, Play, Pause, Bookmark as BookmarkIcon, Trash2, X, ChevronRight, Download, CheckCircle, Loader2, Languages, Volume2 } from 'lucide-react';
 
 interface QuranProps {
   settings: QuranSettings;
+  onUpdateSettings?: (s: QuranSettings) => void;
 }
 
 const BASMALA_TEXT = "بِسْمِ اللَّهِ الرَّحْمَٰنِ الرَّحِيمِ";
 
-const Quran: React.FC<QuranProps> = ({ settings }) => {
+const Quran: React.FC<QuranProps> = ({ settings, onUpdateSettings }) => {
   const [surahs, setSurahs] = useState<Surah[]>([]);
   const [selectedSurah, setSelectedSurah] = useState<Surah | null>(null);
   const [ayahs, setAyahs] = useState<Ayah[]>([]);
@@ -43,6 +44,17 @@ const Quran: React.FC<QuranProps> = ({ settings }) => {
     }
   }, [selectedSurah, settings.reciterId, settings.translationId]);
 
+  // Auto-scroll logic when playingIndex changes
+  useEffect(() => {
+    if (playingIndex !== null) {
+      const ayahNumber = ayahs[playingIndex]?.numberInSurah;
+      const element = ayahRefs.current[ayahNumber];
+      if (element) {
+        element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+    }
+  }, [playingIndex, ayahs]);
+
   useEffect(() => {
     if (!loading && ayahs.length > 0 && pendingScrollTo !== null) {
       const scrollTimer = setTimeout(() => {
@@ -64,6 +76,12 @@ const Quran: React.FC<QuranProps> = ({ settings }) => {
   useEffect(() => {
     localStorage.setItem('noor_bookmarks', JSON.stringify(bookmarks));
   }, [bookmarks]);
+
+  const toggleTranslation = () => {
+    if (onUpdateSettings) {
+      onUpdateSettings({ ...settings, showTranslation: !settings.showTranslation });
+    }
+  };
 
   const handleDownload = async (e: React.MouseEvent, surah: Surah) => {
     e.stopPropagation();
@@ -131,6 +149,14 @@ const Quran: React.FC<QuranProps> = ({ settings }) => {
     }
   };
 
+  const handleAudioEnded = () => {
+    if (settings.continuousPlay && playingIndex !== null && playingIndex < ayahs.length - 1) {
+      handlePlayAyah(playingIndex + 1);
+    } else {
+      setPlayingIndex(null);
+    }
+  };
+
   const nextSurah = () => {
     if (selectedSurah && selectedSurah.number < 114) {
       const nextS = surahs.find(s => s.number === selectedSurah.number + 1);
@@ -141,18 +167,10 @@ const Quran: React.FC<QuranProps> = ({ settings }) => {
     }
   };
 
-  /**
-   * Aggressively strips the Bismillah from the first Ayah.
-   * In most editions returned by Al-Quran Cloud, for all Surahs except 1 and 9,
-   * the first Ayah text is prefixed by "بِسْمِ ٱللَّهِ ٱلرَّحْمَٰنِ ٱلرَّحِيمِ ".
-   * This is exactly 4 words.
-   */
   const getCleanedAyahText = (ayah: Ayah, surahNumber: number) => {
     if (ayah.numberInSurah === 1 && surahNumber !== 1 && surahNumber !== 9) {
       const text = ayah.text.trim();
       const words = text.split(/\s+/);
-      
-      // If the first word contains the root "بِسْمِ", strip the first 4 tokens.
       if (words.length >= 4 && words[0].includes('بِسْمِ')) {
         return words.slice(4).join(' ').trim();
       }
@@ -166,15 +184,25 @@ const Quran: React.FC<QuranProps> = ({ settings }) => {
         <header className="sticky top-0 bg-emerald-950 text-white p-5 flex items-center justify-between shadow-2xl z-20 rounded-b-[2.5rem]">
           <div className="flex items-center gap-4">
             <button onClick={() => setSelectedSurah(null)} className="p-2 bg-white/10 rounded-2xl active:scale-90 transition-all"><ChevronLeft size={20} /></button>
-            <div className="max-w-[150px]">
+            <div className="max-w-[120px]">
               <h2 className="font-black text-xl tracking-tight truncate">{selectedSurah.englishName}</h2>
               <p className="text-[10px] text-emerald-400 font-black uppercase tracking-[0.2em] truncate">{selectedSurah.name}</p>
             </div>
           </div>
-          <button onClick={() => setShowBookmarks(true)} className="p-3 bg-white/10 rounded-2xl active:scale-90 transition-all border border-white/5 relative">
-            <BookmarkIcon size={20} />
-            {bookmarks.length > 0 && <span className="absolute top-1 right-1 w-2 h-2 bg-emerald-500 rounded-full border border-emerald-950" />}
-          </button>
+          <div className="flex items-center gap-2">
+            <button 
+              onClick={toggleTranslation}
+              className={`p-3 rounded-2xl transition-all border border-white/10 flex items-center gap-2 ${settings.showTranslation ? 'bg-emerald-500 text-white shadow-lg shadow-emerald-500/30' : 'bg-white/5 text-emerald-400'}`}
+              title="Toggle Translation"
+            >
+              <Languages size={18} />
+              <span className="text-[8px] font-black uppercase tracking-widest hidden sm:inline">Translate</span>
+            </button>
+            <button onClick={() => setShowBookmarks(true)} className="p-3 bg-white/10 rounded-2xl active:scale-90 transition-all border border-white/5 relative">
+              <BookmarkIcon size={18} />
+              {bookmarks.length > 0 && <span className="absolute top-1 right-1 w-2 h-2 bg-emerald-500 rounded-full border border-emerald-950" />}
+            </button>
+          </div>
         </header>
 
         <div className="flex-1 p-5 space-y-8 max-w-lg mx-auto w-full">
@@ -201,32 +229,37 @@ const Quran: React.FC<QuranProps> = ({ settings }) => {
               {ayahs.map((ayah, idx) => {
                 const cleanedText = getCleanedAyahText(ayah, selectedSurah.number);
                 const bookmarked = isBookmarked(ayah.numberInSurah);
+                const isPlaying = playingIndex === idx;
                 
                 return (
                   <div 
                     key={`${selectedSurah.number}_${ayah.numberInSurah}`} 
-                    ref={el => ayahRefs.current[ayah.numberInSurah] = el}
-                    className={`p-7 rounded-[3rem] transition-all border ${playingIndex === idx ? 'bg-emerald-50 border-emerald-200 shadow-xl' : 'bg-white border-white/50 shadow-premium'} ${bookmarked ? 'border-amber-200' : ''}`}
+                    // Fixed ref assignment to return void instead of the element to resolve TypeScript error.
+                    ref={el => { ayahRefs.current[ayah.numberInSurah] = el; }}
+                    className={`p-7 rounded-[3rem] transition-all duration-500 border ${isPlaying ? 'bg-emerald-50 border-emerald-300 shadow-2xl scale-[1.02] ring-4 ring-emerald-500/10' : 'bg-white border-white/50 shadow-premium'} ${bookmarked ? 'border-amber-200' : ''}`}
                   >
                     <div className="flex justify-between items-center mb-6">
                       <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-2xl bg-emerald-900 text-white flex items-center justify-center text-[12px] font-black shadow-lg shadow-emerald-900/20">
+                        <div className={`w-10 h-10 rounded-2xl flex items-center justify-center text-[12px] font-black shadow-lg transition-colors ${isPlaying ? 'bg-emerald-600 text-white' : 'bg-emerald-900 text-white'}`}>
                           {ayah.numberInSurah}
                         </div>
                         <button onClick={() => toggleBookmark(ayah)} className={`${bookmarked ? 'text-amber-500' : 'text-slate-200'} transition-all p-2 hover:scale-110 active:scale-95`}>
-                          <BookmarkIcon size={20} fill={bookmarked ? "currentColor" : "none"} />
+                          <BookmarkIcon size={18} fill={bookmarked ? "currentColor" : "none"} />
                         </button>
                       </div>
-                      <button onClick={() => handlePlayAyah(idx)} className="p-4 bg-emerald-50 text-emerald-800 rounded-2xl hover:bg-emerald-100 transition-all active:scale-90 border border-emerald-100/50">
-                        {playingIndex === idx ? <Pause size={20} fill="currentColor" /> : <Play size={20} fill="currentColor" />}
+                      <button onClick={() => handlePlayAyah(idx)} className={`p-4 rounded-2xl transition-all active:scale-90 border flex items-center gap-2 ${isPlaying ? 'bg-emerald-600 text-white border-emerald-400' : 'bg-emerald-50 text-emerald-800 border-emerald-100/50'}`}>
+                        {isPlaying ? <Pause size={18} fill="currentColor" /> : <Play size={18} fill="currentColor" />}
+                        {isPlaying && <span className="text-[8px] font-black uppercase tracking-widest animate-pulse">Playing</span>}
                       </button>
                     </div>
-                    <p className="arabic-text text-right mb-8 leading-[2.6] font-bold text-slate-900" style={{ fontSize: `${settings.fontSize}px`, fontFamily: settings.fontFamily }}>
+                    <p className="arabic-text text-right mb-6 leading-[2.6] font-bold text-slate-900 transition-all" style={{ fontSize: `${settings.fontSize}px`, fontFamily: settings.fontFamily }}>
                       {cleanedText}
                     </p>
-                    <div className="text-slate-500 text-sm font-medium leading-relaxed italic border-t border-slate-50 pt-6">
-                      {ayah.translation}
-                    </div>
+                    {settings.showTranslation && (
+                      <div className="text-slate-500 text-sm font-medium leading-relaxed italic border-t border-slate-50 pt-6 animate-in slide-in-from-top-2 duration-300">
+                        {ayah.translation}
+                      </div>
+                    )}
                   </div>
                 );
               })}
@@ -249,13 +282,13 @@ const Quran: React.FC<QuranProps> = ({ settings }) => {
             </>
           )}
         </div>
-        <audio ref={audioRef} onEnded={() => setPlayingIndex(null)} className="hidden" />
+        <audio ref={audioRef} onEnded={handleAudioEnded} className="hidden" />
 
         {showBookmarks && (
           <div className="fixed inset-0 bg-black/60 backdrop-blur-md z-50 flex items-end justify-center" onClick={() => setShowBookmarks(false)}>
             <div className="bg-[#f8f6f0] w-full max-w-lg rounded-t-[4rem] p-10 h-[75vh] flex flex-col shadow-2xl border-t border-white/20" onClick={e => e.stopPropagation()}>
               <div className="flex justify-between items-center mb-8">
-                <h3 className="text-2xl font-black tracking-tight">Bookmarks</h3>
+                <h3 className="text-2xl font-black tracking-tighter">Bookmarks</h3>
                 <button onClick={() => setShowBookmarks(false)} className="p-3 bg-white rounded-full shadow-sm"><X size={20} /></button>
               </div>
               <div className="flex-1 overflow-y-auto space-y-4 pb-10 no-scrollbar">
@@ -299,7 +332,7 @@ const Quran: React.FC<QuranProps> = ({ settings }) => {
                 {surah.number}
               </div>
               <div className="flex-1 min-w-0">
-                <h3 className="font-black text-slate-800 tracking-tight text-lg truncate">{surah.englishName}</h3>
+                <h3 className="font-black text-slate-800 tracking-tight text-lg truncate mb-1">{surah.englishName}</h3>
                 <p className="text-[10px] text-slate-400 font-black uppercase tracking-widest truncate">{surah.englishNameTranslation}</p>
               </div>
               <div className="flex items-center gap-4 shrink-0">

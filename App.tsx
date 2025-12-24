@@ -1,5 +1,6 @@
+
 import React, { useState, useEffect } from 'react';
-import { AppSection, AppSettings, AdhanSettings } from './types.ts';
+import { AppSection, AppSettings, AdhanSettings, LocationData } from './types.ts';
 import Home from './components/Home.tsx';
 import Quran from './components/Quran.tsx';
 import Tasbih from './components/Tasbih.tsx';
@@ -18,12 +19,13 @@ const DEFAULT_SETTINGS: AppSettings = {
     fontFamily: 'Amiri',
     translationId: 'en.sahih',
     reciterId: 'ar.alafasy',
-    continuousPlay: true
+    continuousPlay: true,
+    showTranslation: true
   },
   adhan: {
     voiceId: 'makkah',
     styleId: 'full',
-    method: 2,
+    method: 4, 
     school: 0,
     fajrAngle: 18,
     ishaAngle: 18,
@@ -34,32 +36,41 @@ const DEFAULT_SETTINGS: AppSettings = {
 
 const App: React.FC = () => {
   const [activeSection, setActiveSection] = useState<AppSection>(AppSection.Home);
-  const [location, setLocation] = useState<{lat: number, lng: number} | null>(null);
   const [isDbReady, setIsDbReady] = useState(false);
   const [settings, setSettings] = useState<AppSettings>(() => {
     const saved = localStorage.getItem('noor_settings');
     return saved ? JSON.parse(saved) : DEFAULT_SETTINGS;
   });
 
+  const location = settings.location || null;
+
   useEffect(() => {
-    // Attempt DB init
-    const dbPromise = db.init()
+    db.init()
       .then(() => console.log("DB Ready"))
       .catch(err => console.error("DB Error", err))
       .finally(() => setIsDbReady(true));
 
-    // Fallback if DB hangs
     const timeout = setTimeout(() => setIsDbReady(true), 3000);
 
-    navigator.geolocation.getCurrentPosition(
-      (pos) => setLocation({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
-      (err) => {
-        console.warn("Geolocation denied, using default (Mecca)");
-        setLocation({ lat: 21.4225, lng: 39.8262 });
-      },
-      { timeout: 5000 }
-    );
-
+    if (!settings.location || !settings.location.isManual) {
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          const loc: LocationData = {
+            lat: pos.coords.latitude,
+            lng: pos.coords.longitude,
+            name: "Current Location",
+            isManual: false
+          };
+          updateLocation(loc);
+        },
+        (err) => {
+          if (!settings.location) {
+             updateLocation({ lat: 21.4225, lng: 39.8262, name: "Mecca", isManual: false });
+          }
+        },
+        { timeout: 5000 }
+      );
+    }
     return () => clearTimeout(timeout);
   }, []);
 
@@ -74,6 +85,12 @@ const App: React.FC = () => {
       }
     }
   }, [isDbReady]);
+
+  const updateLocation = (newLoc: LocationData) => {
+    const newSettings = { ...settings, location: newLoc };
+    setSettings(newSettings);
+    localStorage.setItem('noor_settings', JSON.stringify(newSettings));
+  };
 
   if (!isDbReady) return null;
 
@@ -90,15 +107,15 @@ const App: React.FC = () => {
   const renderSection = () => {
     switch (activeSection) {
       case AppSection.Home:
-        return <Home onNavigate={setActiveSection} location={location} />;
+        return <Home onNavigate={setActiveSection} location={location} adhanSettings={settings.adhan} />;
       case AppSection.Quran:
-        return <Quran settings={settings.quran} />;
+        return <Quran settings={settings.quran} onUpdateSettings={(s) => handleSaveSettings({...settings, quran: s})} />;
       case AppSection.Tasbih:
         return <Tasbih />;
       case AppSection.Adhan:
-        return <Adhan location={location} settings={settings.adhan} onUpdateSettings={handleUpdateAdhanSettings} />;
+        return <Adhan location={location} settings={settings.adhan} onUpdateSettings={handleUpdateAdhanSettings} onUpdateLocation={updateLocation} />;
       case AppSection.Calendar:
-        return <Calendar />;
+        return <Calendar location={location} />;
       case AppSection.Dua:
         return <DuaView onRecite={() => setActiveSection(AppSection.Tasbih)} />;
       case AppSection.Qiblah:
@@ -108,7 +125,7 @@ const App: React.FC = () => {
       case AppSection.Settings:
         return <SettingsView settings={settings} onSave={handleSaveSettings} />;
       default:
-        return <Home onNavigate={setActiveSection} location={location} />;
+        return <Home onNavigate={setActiveSection} location={location} adhanSettings={settings.adhan} />;
     }
   };
 

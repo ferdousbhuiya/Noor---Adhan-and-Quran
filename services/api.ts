@@ -1,5 +1,6 @@
 import { Surah, Ayah, PrayerTimes } from '../types';
 import { db } from './db';
+import { GoogleGenAI, Type } from "@google/genai";
 
 const QURAN_API_BASE = 'https://api.alquran.cloud/v1';
 const PRAYER_API_BASE = 'https://api.aladhan.com/v1';
@@ -36,14 +37,63 @@ export const fetchSurahAyahs = async (surahNumber: number, reciter: string = 'ar
   }));
 };
 
+export const geocodeAddress = async (address: string): Promise<{ lat: number, lng: number, name: string }> => {
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  const response = await ai.models.generateContent({
+    model: "gemini-3-flash-preview",
+    contents: `Resolve this location string into geographical coordinates: "${address}". Return the official city name, latitude, and longitude.`,
+    config: {
+      responseMimeType: "application/json",
+      responseSchema: {
+        type: Type.OBJECT,
+        properties: {
+          lat: { type: Type.NUMBER },
+          lng: { type: Type.NUMBER },
+          name: { type: Type.STRING }
+        },
+        required: ["lat", "lng", "name"]
+      }
+    }
+  });
+  
+  return JSON.parse(response.text);
+};
+
+export const fetchHijriCalendar = async (year: number, month: number, lat: number, lng: number): Promise<any[]> => {
+  // Use /calendar endpoint which is more robust than /gCalendar
+  const url = `${PRAYER_API_BASE}/calendar?latitude=${lat}&longitude=${lng}&method=4&month=${month}&year=${year}`;
+  try {
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`API returned ${res.status}`);
+    const data = await res.json();
+    
+    // The calendar endpoint returns an array of days for the month
+    if (data.data && Array.isArray(data.data)) {
+      return data.data;
+    }
+    
+    // Fallback if data structure is unexpected
+    if (data.data && typeof data.data === 'object') {
+       return Object.keys(data.data)
+        .sort((a, b) => parseInt(a) - parseInt(b))
+        .map(key => data.data[key]);
+    }
+    
+    return [];
+  } catch (e) {
+    console.error("fetchHijriCalendar failed:", e);
+    return [];
+  }
+};
+
 export const fetchPrayerTimes = async (
   latitude: number, 
   longitude: number, 
-  method: number = 2, 
+  method: number = 4, // Default to Umm al-Qura
   school: number = 0,
   fajrAngle?: number,
   ishaAngle?: number
-): Promise<{ times: PrayerTimes; hijriDate: string; hijriArabic: string; locationName: string }> => {
+): Promise<{ times: PrayerTimes; hijriDate: string; hijriArabic: string; locationName: string; rawHijri: any }> => {
   const dateStr = new Date().toISOString().split('T')[0];
   
   let url = `${PRAYER_API_BASE}/timings?latitude=${latitude}&longitude=${longitude}&method=${method}&school=${school}`;
@@ -53,7 +103,7 @@ export const fetchPrayerTimes = async (
     url += `&methodSettings=${settings}`;
   }
 
-  const cacheKey = `${dateStr}_${method}_${school}_${fajrAngle || 0}_${ishaAngle || 0}`;
+  const cacheKey = `${dateStr}_${method}_${school}_${fajrAngle || 0}_${ishaAngle || 0}_${latitude.toFixed(2)}_${longitude.toFixed(2)}`;
   const localTimes = await db.getPrayerTimes(cacheKey);
   
   try {
@@ -71,10 +121,11 @@ export const fetchPrayerTimes = async (
       times: timings,
       hijriDate: `${hijri.day} ${hijri.month.en} ${hijri.year} AH`,
       hijriArabic: `${hijri.day} ${hijri.month.ar} ${hijri.year} هـ`,
-      locationName: data.data.meta.timezone
+      locationName: data.data.meta.timezone,
+      rawHijri: hijri
     };
   } catch (e) {
-    if (localTimes) return { times: localTimes, hijriDate: 'Offline Mode', hijriArabic: '', locationName: '' };
+    if (localTimes) return { times: localTimes, hijriDate: 'Offline Mode', hijriArabic: '', locationName: '', rawHijri: null };
     throw e;
   }
 };

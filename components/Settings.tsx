@@ -2,7 +2,7 @@
 import React, { useState } from 'react';
 import { AppSettings, QuranFont } from '../types';
 import { TRANSLATIONS, ARABIC_FONTS, ADHAN_OPTIONS, PRAYER_METHODS, PRAYER_SCHOOLS, RECITERS } from '../constants';
-import { Save, Book, Volume2, Target, Compass, Bell, Type, User, Info, Smartphone, RefreshCw } from 'lucide-react';
+import { Save, Book, Volume2, Target, Compass, Bell, Type, User, Info, Smartphone, RefreshCw, Languages, PlayCircle } from 'lucide-react';
 
 interface SettingsProps {
   settings: AppSettings;
@@ -47,6 +47,23 @@ const SettingsView: React.FC<SettingsProps> = ({ settings, onSave }) => {
             <Book size={14} /> Quranic Experience
           </h2>
           <div className="bg-white p-8 rounded-[3.5rem] border border-white shadow-premium space-y-8">
+            <div className="grid grid-cols-2 gap-4">
+               <button 
+                onClick={() => setLocalSettings({...localSettings, quran: {...localSettings.quran, continuousPlay: !localSettings.quran.continuousPlay}})}
+                className={`p-5 rounded-[2rem] border flex flex-col items-center gap-3 transition-all ${localSettings.quran.continuousPlay ? 'bg-emerald-50 border-emerald-100 text-emerald-900' : 'bg-slate-50 border-slate-100 text-slate-400'}`}
+               >
+                 <PlayCircle size={24} />
+                 <span className="text-[9px] font-black uppercase tracking-widest">Auto Play</span>
+               </button>
+               <button 
+                onClick={() => setLocalSettings({...localSettings, quran: {...localSettings.quran, showTranslation: !localSettings.quran.showTranslation}})}
+                className={`p-5 rounded-[2rem] border flex flex-col items-center gap-3 transition-all ${localSettings.quran.showTranslation ? 'bg-emerald-50 border-emerald-100 text-emerald-900' : 'bg-slate-50 border-slate-100 text-slate-400'}`}
+               >
+                 <Languages size={24} />
+                 <span className="text-[9px] font-black uppercase tracking-widest">Translation</span>
+               </button>
+            </div>
+
             <div>
               <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-3 ml-2">Preferred Qari</label>
               <select 

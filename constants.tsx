@@ -20,10 +20,15 @@ export const ADHAN_STYLES = [
 ];
 
 export const ADHAN_OPTIONS = [
-  { id: 'makkah', name: 'Makkah Al-Mukarramah', url: 'https://www.islamcan.com/adhan/audio/adhan-makkah.mp3' },
-  { id: 'madinah', name: 'Madinah Al-Munawwarah', url: 'https://www.islamcan.com/adhan/audio/adhan-madinah.mp3' },
-  { id: 'egypt', name: 'Abdul Basit (Egypt)', url: 'https://www.islamcan.com/adhan/audio/adhan-egypt.mp3' },
-  { id: 'turkey', name: 'Istanbul (Turkey)', url: 'https://www.islamcan.com/adhan/audio/adhan-turkey.mp3' }
+  { id: 'makkah', name: 'Makkah Al-Mukarramah', url: 'https://cdn.jsdelivr.net/gh/Ayman-Ibrahim/Adhan-MP3@main/Makkah.mp3' },
+  { id: 'madinah', name: 'Madinah Al-Munawwarah', url: 'https://cdn.jsdelivr.net/gh/Ayman-Ibrahim/Adhan-MP3@main/Madinah.mp3' },
+  { id: 'egypt', name: 'Abdul Basit (Egypt)', url: 'https://cdn.jsdelivr.net/gh/Ayman-Ibrahim/Adhan-MP3@main/Abdul-Basit.mp3' },
+  { id: 'turkey', name: 'Istanbul (Turkey)', url: 'https://cdn.jsdelivr.net/gh/Ayman-Ibrahim/Adhan-MP3@main/Turkey.mp3' },
+  { id: 'alaqsa', name: 'Al-Aqsa (Jerusalem)', url: 'https://cdn.jsdelivr.net/gh/Ayman-Ibrahim/Adhan-MP3@main/Al-Aqsa.mp3' },
+  { id: 'bosnia', name: 'Sarajevo (Bosnia)', url: 'https://cdn.jsdelivr.net/gh/Ayman-Ibrahim/Adhan-MP3@main/Bosnia.mp3' },
+  { id: 'uae', name: 'Sheikh Zayed (UAE)', url: 'https://cdn.jsdelivr.net/gh/Ayman-Ibrahim/Adhan-MP3@main/UAE.mp3' },
+  { id: 'qatar', name: 'Doha (Qatar)', url: 'https://cdn.jsdelivr.net/gh/Ayman-Ibrahim/Adhan-MP3@main/Qatar.mp3' },
+  { id: 'kuwait', name: 'Mishary (Kuwait)', url: 'https://cdn.jsdelivr.net/gh/Ayman-Ibrahim/Adhan-MP3@main/Kuwait.mp3' }
 ];
 
 export const ARABIC_FONTS: { id: string, name: string }[] = [

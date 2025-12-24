@@ -2,7 +2,7 @@
 import { Surah, Ayah, PrayerTimes } from '../types';
 
 const DB_NAME = 'NoorOfflineDB';
-const DB_VERSION = 1;
+const DB_VERSION = 2; // Incremented version for new store
 
 export class LocalDB {
   private db: IDBDatabase | null = null;
@@ -22,6 +22,10 @@ export class LocalDB {
         if (!db.objectStoreNames.contains('prayerTimes')) {
           db.createObjectStore('prayerTimes', { keyPath: 'date' });
         }
+        // New store for Adhan Audio Blobs
+        if (!db.objectStoreNames.contains('adhanAudios')) {
+          db.createObjectStore('adhanAudios', { keyPath: 'id' });
+        }
       };
 
       request.onsuccess = (event) => {
@@ -31,6 +35,35 @@ export class LocalDB {
 
       request.onerror = () => reject('Failed to open IndexedDB');
     });
+  }
+
+  // Adhan Storage
+  async saveAdhanAudio(id: string, audioBlob: Blob): Promise<void> {
+    const tx = this.db!.transaction('adhanAudios', 'readwrite');
+    const store = tx.objectStore('adhanAudios');
+    store.put({ id, audioBlob });
+    return new Promise(resolve => tx.oncomplete = () => resolve());
+  }
+
+  async getAdhanAudio(id: string): Promise<Blob | null> {
+    const tx = this.db!.transaction('adhanAudios', 'readonly');
+    const store = tx.objectStore('adhanAudios');
+    const request = store.get(id);
+    return new Promise(resolve => request.onsuccess = () => resolve(request.result?.audioBlob || null));
+  }
+
+  async deleteAdhanAudio(id: string): Promise<void> {
+    const tx = this.db!.transaction('adhanAudios', 'readwrite');
+    const store = tx.objectStore('adhanAudios');
+    store.delete(id);
+    return new Promise(resolve => tx.oncomplete = () => resolve());
+  }
+
+  async getAllDownloadedAdhanIds(): Promise<string[]> {
+    const tx = this.db!.transaction('adhanAudios', 'readonly');
+    const store = tx.objectStore('adhanAudios');
+    const request = store.getAllKeys();
+    return new Promise(resolve => request.onsuccess = () => resolve(request.result as string[]));
   }
 
   // Surahs

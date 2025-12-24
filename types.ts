@@ -42,12 +42,34 @@ export interface Bookmark {
   timestamp: number;
 }
 
+export interface DhikrItem {
+  id: string;
+  title: string;
+  arabicText: string;
+  targetCount: number;
+  completedCount: number;
+  image?: string;
+  date: string;
+}
+
+export interface Dua {
+  id: string;
+  title: string;
+  arabicText: string;
+  translation: string;
+  benefit: string;
+  targetCount: number;
+  currentCount: number;
+  image?: string;
+}
+
 export interface QuranSettings {
   fontSize: number;
   fontFamily: QuranFont;
   translationId: string;
   reciterId: string;
   continuousPlay: boolean;
+  showTranslation: boolean;
 }
 
 export interface AdhanSettings {
@@ -60,35 +82,18 @@ export interface AdhanSettings {
   notifications: Record<string, boolean>;
 }
 
-export interface DhikrItem {
-  id: string;
-  title: string;
-  arabicText?: string;
-  translation?: string;
-  targetCount: number;
-  completedCount: number;
-  image?: string;
-  date: string;
-}
-
-/**
- * Represents a Supplication (Dua) stored in the user's library.
- */
-export interface Dua {
-  id: string;
-  title: string;
-  arabicText?: string;
-  translation?: string;
-  benefit?: string;
-  targetCount: number;
-  currentCount: number;
-  image?: string;
+export interface LocationData {
+  lat: number;
+  lng: number;
+  name: string;
+  isManual: boolean;
 }
 
 export interface AppSettings {
   quran: QuranSettings;
   adhan: AdhanSettings;
   tasbihTarget: number;
+  location?: LocationData;
 }
 
 export enum AppSection {
