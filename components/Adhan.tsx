@@ -2,9 +2,9 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { fetchPrayerTimes, geocodeAddress } from '../services/api';
 import { PrayerTimes, AdhanSettings, LocationData } from '../types';
-import { ADHAN_OPTIONS, PRAYER_METHODS, PRAYER_SCHOOLS } from '../constants';
+import { ADHAN_OPTIONS } from '../constants';
 import { db } from '../services/db';
-import { Bell, BellOff, Volume2, VolumeX, Loader2, Sliders, ChevronRight, AlertCircle, Check, Settings2, Clock, MapPin, Search, X, Navigation, Download, Trash2, CheckCircle2, Play, Pause } from 'lucide-react';
+import { Bell, BellOff, Volume2, Loader2, Check, Settings2, MapPin, X, Download, Trash2, CheckCircle2, Play, Pause, AlertCircle } from 'lucide-react';
 
 interface AdhanProps {
   location: LocationData | null;
@@ -30,8 +30,9 @@ const Adhan: React.FC<AdhanProps> = ({ location, settings, onUpdateSettings, onU
   const [downloadedIds, setDownloadedIds] = useState<string[]>([]);
   const [isDownloading, setIsDownloading] = useState<string | null>(null);
   const [isPreviewPlaying, setIsPreviewPlaying] = useState<string | null>(null);
+  const [isBuffering, setIsBuffering] = useState(false);
   
-  const currentAudioRef = useRef<HTMLAudioElement | null>(null);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
   
   const [showLocationModal, setShowLocationModal] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
@@ -39,16 +40,7 @@ const Adhan: React.FC<AdhanProps> = ({ location, settings, onUpdateSettings, onU
 
   useEffect(() => {
     db.getAllDownloadedAdhanIds().then(setDownloadedIds);
-    return () => stopCurrentAudio();
   }, []);
-
-  const stopCurrentAudio = () => {
-    if (currentAudioRef.current) {
-      currentAudioRef.current.pause();
-      currentAudioRef.current.src = "";
-      currentAudioRef.current = null;
-    }
-  };
 
   useEffect(() => {
     if (location) {
@@ -128,23 +120,24 @@ const Adhan: React.FC<AdhanProps> = ({ location, settings, onUpdateSettings, onU
   }, [currentAndNext]);
 
   const togglePreview = (id: string, url: string) => {
+    if (!audioRef.current) return;
+
     if (isPreviewPlaying === id) {
-      stopCurrentAudio();
+      audioRef.current.pause();
       setIsPreviewPlaying(null);
+      setIsBuffering(false);
       return;
     }
 
-    stopCurrentAudio();
-    const audio = new Audio(url);
-    audio.onended = () => setIsPreviewPlaying(null);
-    audio.onerror = () => {
-      setIsPreviewPlaying(null);
-      alert("Playback failed. Please check your internet connection.");
-    };
-    
-    currentAudioRef.current = audio;
-    audio.play().catch(() => setIsPreviewPlaying(null));
+    setIsBuffering(true);
     setIsPreviewPlaying(id);
+    audioRef.current.src = url;
+    audioRef.current.load();
+    audioRef.current.play().catch(e => {
+      console.error("Play failed", e);
+      setIsPreviewPlaying(null);
+      setIsBuffering(false);
+    });
   };
 
   const downloadAdhan = async (option: typeof ADHAN_OPTIONS[0]) => {
@@ -156,7 +149,7 @@ const Adhan: React.FC<AdhanProps> = ({ location, settings, onUpdateSettings, onU
       await db.saveAdhanAudio(option.id, blob);
       setDownloadedIds(prev => [...prev, option.id]);
     } catch (e) {
-      alert("Download failed. Please check your connection.");
+      alert("Download failed. Check your connection.");
     } finally {
       setIsDownloading(null);
     }
@@ -193,6 +186,15 @@ const Adhan: React.FC<AdhanProps> = ({ location, settings, onUpdateSettings, onU
 
   return (
     <div className="p-6 bg-[#f2f6f4] min-h-screen pb-40">
+      <audio 
+        ref={audioRef} 
+        onWaiting={() => setIsBuffering(true)}
+        onCanPlay={() => setIsBuffering(false)}
+        onEnded={() => { setIsPreviewPlaying(null); setIsBuffering(false); }}
+        onError={() => { setIsPreviewPlaying(null); setIsBuffering(false); }}
+        className="hidden"
+      />
+
       <header className="flex justify-between items-end mb-10 px-2">
         <div>
           <h1 className="text-4xl font-black text-slate-800 tracking-tighter mb-1">Prayer Times</h1>
@@ -248,9 +250,9 @@ const Adhan: React.FC<AdhanProps> = ({ location, settings, onUpdateSettings, onU
         </div>
       ) : (
         <div className="space-y-8 animate-in slide-in-from-right duration-500">
-          <section className="bg-white p-8 rounded-[3.5rem] shadow-premium space-y-6 border border-white">
-            <h2 className="font-black text-xl tracking-tight text-slate-800 flex items-center gap-3">
-              <Volume2 size={20} className="text-amber-500" /> Adhan Voice
+          <section className="bg-white p-8 rounded-[3.5rem] shadow-premium border border-white">
+            <h2 className="font-black text-xl tracking-tight text-slate-800 flex items-center gap-3 mb-6">
+              <Volume2 size={20} className="text-amber-500" /> Choose Adhan Voice
             </h2>
             <div className="space-y-4">
               {ADHAN_OPTIONS.map((option) => {
@@ -265,38 +267,38 @@ const Adhan: React.FC<AdhanProps> = ({ location, settings, onUpdateSettings, onU
                       <div className="flex-1">
                         <div className="flex items-center gap-2">
                           <h4 className="font-black text-base">{option.name}</h4>
-                          {isSelected && <span className="bg-emerald-400 text-emerald-950 text-[7px] font-black px-2 py-0.5 rounded-full uppercase tracking-widest">ACTIVE</span>}
+                          {isSelected && <span className="bg-emerald-400 text-emerald-950 text-[7px] font-black px-2 py-0.5 rounded-full uppercase tracking-widest">SELECTED</span>}
                         </div>
                         <div className="flex items-center gap-2 mt-1">
                             <span className={`text-[9px] font-black uppercase tracking-widest ${isSelected ? 'text-emerald-300' : 'text-slate-400'}`}>
-                              {isDownloaded ? 'Offline Mode Ready' : 'Online Preview'}
+                              {isDownloaded ? 'Offline Enabled' : 'Preview Available'}
                             </span>
-                            {isDownloaded && !isSelected && (
-                                <button onClick={() => deleteAdhan(option.id)} className="text-rose-400 p-1 hover:text-rose-600 transition-colors">
-                                    <Trash2 size={12} />
-                                </button>
-                            )}
                         </div>
                       </div>
                       
                       <button 
                         onClick={() => togglePreview(option.id, option.url)} 
-                        className={`p-4 rounded-2xl shadow-sm border transition-all flex items-center gap-2 ${playing ? 'bg-amber-500 text-white border-amber-400 animate-pulse' : isSelected ? 'bg-white/10 text-white border-white/20' : 'bg-white text-emerald-600 border-emerald-50'}`}
+                        className={`p-4 rounded-2xl shadow-sm border transition-all flex items-center gap-2 ${playing ? 'bg-amber-500 text-white border-amber-400' : isSelected ? 'bg-white/10 text-white border-white/20' : 'bg-white text-emerald-600 border-emerald-100'}`}
                       >
-                        {playing ? <Pause size={18} fill="currentColor" /> : <Play size={18} fill="currentColor" />}
-                        <span className="text-[10px] font-black uppercase tracking-widest">{playing ? 'Stop' : 'Preview'}</span>
+                        {playing && isBuffering ? <Loader2 size={18} className="animate-spin" /> : playing ? <Pause size={18} fill="currentColor" /> : <Play size={18} fill="currentColor" />}
+                        <span className="text-[10px] font-black uppercase tracking-widest">{playing ? (isBuffering ? 'Loading' : 'Stop') : 'Preview'}</span>
                       </button>
                     </div>
 
                     <div className="flex gap-2">
                         {isDownloaded ? (
-                          <button 
-                            onClick={() => onUpdateSettings({...settings, voiceId: option.id})}
-                            className={`flex-1 py-4 rounded-2xl font-black text-[10px] uppercase tracking-[0.2em] shadow-lg transition-all flex items-center justify-center gap-2 ${isSelected ? 'bg-white text-emerald-900' : 'bg-emerald-950 text-white active:scale-95'}`}
-                          >
-                            {isSelected ? <CheckCircle2 size={14} /> : null}
-                            {isSelected ? 'Currently Selected' : 'Set as Default'}
-                          </button>
+                          <div className="flex-1 flex gap-2">
+                            <button 
+                              onClick={() => onUpdateSettings({...settings, voiceId: option.id})}
+                              className={`flex-1 py-4 rounded-2xl font-black text-[10px] uppercase tracking-[0.2em] shadow-lg transition-all flex items-center justify-center gap-2 ${isSelected ? 'bg-white text-emerald-900' : 'bg-emerald-950 text-white active:scale-95'}`}
+                            >
+                              {isSelected ? <CheckCircle2 size={14} /> : null}
+                              {isSelected ? 'Currently Selected' : 'Use this Voice'}
+                            </button>
+                            {!isSelected && (
+                                <button onClick={() => deleteAdhan(option.id)} className="p-4 bg-rose-50 text-rose-500 rounded-2xl"><Trash2 size={18} /></button>
+                            )}
+                          </div>
                         ) : (
                           <button 
                             disabled={downloading}

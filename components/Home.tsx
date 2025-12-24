@@ -31,7 +31,7 @@ const Home: React.FC<HomeProps> = ({ onNavigate, location, adhanSettings }) => {
   const [isAdhanPlaying, setIsAdhanPlaying] = useState(false);
   const [isAudioLoading, setIsAudioLoading] = useState(false);
   
-  const activeAudioRef = useRef<HTMLAudioElement | null>(null);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
   const objectUrlRef = useRef<string | null>(null);
 
   const selectedVoiceName = useMemo(() => {
@@ -68,19 +68,6 @@ const Home: React.FC<HomeProps> = ({ onNavigate, location, adhanSettings }) => {
     return () => clearInterval(timer);
   }, [nextPrayer]);
 
-  // Clean up on unmount
-  useEffect(() => {
-    return () => {
-      if (activeAudioRef.current) {
-        activeAudioRef.current.pause();
-        activeAudioRef.current.src = "";
-      }
-      if (objectUrlRef.current) {
-        URL.revokeObjectURL(objectUrlRef.current);
-      }
-    };
-  }, []);
-
   const calculateNextPrayer = (times: PrayerTimes) => {
     const now = new Date();
     const currentMinutes = now.getHours() * 60 + now.getMinutes();
@@ -103,8 +90,10 @@ const Home: React.FC<HomeProps> = ({ onNavigate, location, adhanSettings }) => {
   };
 
   const toggleAdhan = async () => {
+    if (!audioRef.current) return;
+
     if (isAdhanPlaying) {
-      if (activeAudioRef.current) activeAudioRef.current.pause();
+      audioRef.current.pause();
       setIsAdhanPlaying(false);
       return;
     }
@@ -120,30 +109,17 @@ const Home: React.FC<HomeProps> = ({ onNavigate, location, adhanSettings }) => {
         return;
       }
 
-      // Cleanup old URL
       if (objectUrlRef.current) URL.revokeObjectURL(objectUrlRef.current);
-      
       const url = URL.createObjectURL(audioBlob);
       objectUrlRef.current = url;
 
-      // Fresh instance is best for Blob sources
-      const audio = new Audio(url);
-      audio.onended = () => {
-        setIsAdhanPlaying(false);
-        URL.revokeObjectURL(url);
-        objectUrlRef.current = null;
-      };
-      audio.onerror = () => {
-        setIsAdhanPlaying(false);
-        setIsAudioLoading(false);
-        alert("Audio playback failed. Please try re-downloading the voice.");
-      };
-
-      activeAudioRef.current = audio;
-      await audio.play();
+      audioRef.current.src = url;
+      audioRef.current.load();
+      await audioRef.current.play();
       setIsAdhanPlaying(true);
     } catch (e) {
       console.error("Adhan error", e);
+      alert("Audio playback failed. Please check your voice settings.");
     } finally {
       setIsAudioLoading(false);
     }
@@ -153,6 +129,12 @@ const Home: React.FC<HomeProps> = ({ onNavigate, location, adhanSettings }) => {
 
   return (
     <div className="flex flex-col min-h-screen bg-[#f2f6f4] relative">
+      <audio 
+        ref={audioRef} 
+        onEnded={() => setIsAdhanPlaying(false)} 
+        className="hidden"
+      />
+
       <div className="fixed inset-0 z-0">
          <div className="absolute inset-0 bg-gradient-to-b from-[#064e3b] via-[#065f46] to-[#f2f6f4]" />
          <div className="absolute inset-0 opacity-[0.04] mix-blend-overlay" style={{ backgroundImage: `url('https://www.transparenttextures.com/patterns/islamic-art.png')` }} />
