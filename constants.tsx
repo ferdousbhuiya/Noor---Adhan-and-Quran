@@ -24,31 +24,31 @@ export const ADHAN_OPTIONS = [
     id: 'makkah', 
     name: 'Makkah Adhan', 
     muezzin: 'Sheikh Ali Mullah',
-    url: 'https://www.islamcan.com/audio/adhan/azan1.mp3'
+    url: 'https://islamcan.com/audio/adhan/azan1.mp3'
   },
   { 
     id: 'madinah', 
     name: 'Madinah Adhan', 
     muezzin: 'Sheikh Essam Bukhari',
-    url: 'https://www.islamcan.com/audio/adhan/azan2.mp3'
+    url: 'https://islamcan.com/audio/adhan/azan2.mp3'
   },
   { 
     id: 'mishary', 
     name: 'Mishary Rashid', 
     muezzin: 'Sheikh Mishary Rashid Alafasy',
-    url: 'https://www.islamcan.com/audio/adhan/azan3.mp3'
+    url: 'https://islamcan.com/audio/adhan/azan3.mp3'
   },
   { 
     id: 'alaqsa', 
     name: 'Al-Aqsa Adhan', 
     muezzin: 'Al-Aqsa Mosque',
-    url: 'https://www.islamcan.com/audio/adhan/azan4.mp3'
+    url: 'https://islamcan.com/audio/adhan/azan4.mp3'
   },
   { 
     id: 'egypt', 
     name: 'Egyptian Adhan', 
     muezzin: 'Egyptian Style',
-    url: 'https://www.islamcan.com/audio/adhan/azan5.mp3'
+    url: 'https://islamcan.com/audio/adhan/azan5.mp3'
   }
 ];
 

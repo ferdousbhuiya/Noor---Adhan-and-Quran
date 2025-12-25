@@ -11,7 +11,7 @@ import Explore from './components/Explore.tsx';
 import SettingsView from './components/Settings.tsx';
 import { db } from './services/db.ts';
 import { fetchPrayerTimes } from './services/api.ts';
-import { Home as HomeIcon, BookOpen, Settings as SettingsIcon, Navigation, Sparkles, Volume2, ShieldAlert } from 'lucide-react';
+import { Home as HomeIcon, BookOpen, Settings as SettingsIcon, Navigation, Sparkles, Volume2, ShieldAlert, MapPin } from 'lucide-react';
 
 const DEFAULT_SETTINGS: AppSettings = {
   quran: {
@@ -34,16 +34,13 @@ const DEFAULT_SETTINGS: AppSettings = {
   tasbihTarget: 33
 };
 
-/**
- * High-compatibility 1-second silent WAV base64.
- * WAV is uncompressed and more reliable than MP3 for short Data URIs across mobile browsers.
- */
 const SILENT_AUDIO_URI = "data:audio/wav;base64,UklGRjIAAABXQVZFVG10IBAAAAABAAEAIlYAAClVGAAAgAAAAAABAAgAZGF0YRAAAACAgICAgICAgICAgICAgICA=";
 
 const App: React.FC = () => {
   const [activeSection, setActiveSection] = useState<AppSection>(AppSection.Home);
   const [isDbReady, setIsDbReady] = useState(false);
   const [isAudioUnlocked, setIsAudioUnlocked] = useState(false);
+  const [isLocating, setIsLocating] = useState(false);
   const [settings, setSettings] = useState<AppSettings>(() => {
     const saved = localStorage.getItem('noor_settings');
     return saved ? JSON.parse(saved) : DEFAULT_SETTINGS;
@@ -56,7 +53,6 @@ const App: React.FC = () => {
 
   const unlockAudioRef = useRef<HTMLAudioElement | null>(null);
 
-  // Initialize DB and hide loader
   useEffect(() => {
     const initApp = async () => {
       try {
@@ -69,61 +65,71 @@ const App: React.FC = () => {
           (window as any).hideAppLoader();
         }
       }
-
-      // If no location, try to get current position
-      if (!location) {
-        navigator.geolocation.getCurrentPosition(
-          (pos) => {
-            const newLoc = { lat: pos.coords.latitude, lng: pos.coords.longitude, name: "Current Location", isManual: false };
-            setLocation(newLoc);
-            localStorage.setItem('noor_location', JSON.stringify(newLoc));
-          },
-          () => console.log("Location access denied"),
-          { timeout: 10000 }
-        );
-      }
     };
     initApp();
   }, []);
 
-  // Save settings on change
   useEffect(() => {
     localStorage.setItem('noor_settings', JSON.stringify(settings));
   }, [settings]);
 
-  /**
-   * Unlocks audio for the browser by playing a silent sound on user interaction.
-   * Mobile browsers (iOS/Android) require a user gesture to authorize the audio engine.
-   */
   const handleUnlockAudio = async () => {
-    // Proceed to app immediately to ensure smooth UX
-    setIsAudioUnlocked(true);
+    setIsLocating(true);
     
+    // 1. Critical: Request Location during User-Initiated event
+    // Mobile browsers often block getCurrentPosition if it's not a direct result of a tap.
+    if (!location) {
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          const newLoc = { 
+            lat: pos.coords.latitude, 
+            lng: pos.coords.longitude, 
+            name: "My Location", 
+            isManual: false 
+          };
+          setLocation(newLoc);
+          localStorage.setItem('noor_location', JSON.stringify(newLoc));
+          finishUnlock();
+        },
+        (err) => {
+          console.warn("Location error:", err);
+          // Fallback: Continue without location, user can set it manually.
+          finishUnlock();
+        },
+        { timeout: 8000, enableHighAccuracy: false }
+      );
+    } else {
+      finishUnlock();
+    }
+  };
+
+  const finishUnlock = async () => {
     const audio = unlockAudioRef.current;
-    if (!audio) return;
+    if (!audio) {
+      setIsAudioUnlocked(true);
+      setIsLocating(false);
+      return;
+    }
     
     try {
-      // 1. Warm up the AudioContext (Critical for iOS Safari)
+      // 2. Resume Audio Context
       const AudioContextClass = (window as any).AudioContext || (window as any).webkitAudioContext;
       if (AudioContextClass) {
         const ctx = new AudioContextClass();
-        if (ctx.state === 'suspended') {
-          await ctx.resume();
-        }
+        if (ctx.state === 'suspended') await ctx.resume();
       }
 
-      // 2. Play the silent WAV from the DOM element
+      // 3. Play silence to "bless" the audio element
       audio.src = SILENT_AUDIO_URI;
       audio.load();
+      await audio.play();
       
-      const playPromise = audio.play();
-      if (playPromise !== undefined) {
-        await playPromise;
-      }
+      setIsAudioUnlocked(true);
     } catch (e) {
-      // We log but don't stop the app, as some browsers might block silent play 
-      // but still authorize the context for later real audio.
-      console.warn("Audio unlock silent play skipped:", e);
+      console.warn("Audio engine primed without playback:", e);
+      setIsAudioUnlocked(true);
+    } finally {
+      setIsLocating(false);
     }
   };
 
@@ -132,10 +138,6 @@ const App: React.FC = () => {
   return (
     <div className="max-w-md mx-auto bg-slate-50 min-h-screen relative shadow-2xl flex flex-col font-['Plus_Jakarta_Sans'] select-none overflow-hidden">
       
-      {/* 
-          Hidden audio element used for unlocking. 
-          We keep it in the DOM with opacity 0 to ensure it's registered for user interaction.
-      */}
       <audio 
         ref={unlockAudioRef} 
         style={{ position: 'absolute', opacity: 0, pointerEvents: 'none' }} 
@@ -143,32 +145,33 @@ const App: React.FC = () => {
         crossOrigin="anonymous"
       />
 
-      {/* Unlock Screen for Mobile Autoplay Compliance */}
+      {/* Mobile Unlock & Location Screen */}
       {!isAudioUnlocked && (
-        <div className="fixed inset-0 z-[2000] bg-[#064e3b] flex flex-col items-center justify-center p-10 text-center animate-in fade-in duration-500">
+        <div className="fixed inset-0 z-[2000] bg-[#064e3b] flex flex-col items-center justify-center p-10 text-center">
             <div className="absolute inset-0 opacity-[0.05]" style={{ backgroundImage: `url('https://www.transparenttextures.com/patterns/islamic-art.png')` }} />
             
             <div className="relative z-10 mb-12">
-               <div className="w-24 h-24 bg-white/10 rounded-[2.5rem] flex items-center justify-center mx-auto border border-white/20 shadow-2xl animate-bounce">
-                  <Volume2 size={40} className="text-emerald-400" />
+               <div className="w-24 h-24 bg-white/10 rounded-[2.5rem] flex items-center justify-center mx-auto border border-white/20 shadow-2xl">
+                  {isLocating ? <MapPin size={40} className="text-amber-400 animate-pulse" /> : <Volume2 size={40} className="text-emerald-400" />}
                </div>
-               <h2 className="text-3xl font-black text-white tracking-tighter mt-8 mb-4">Noor Companion</h2>
-               <p className="text-emerald-100/60 text-sm font-medium leading-relaxed px-4">
-                  Tap to synchronize the Adhan engine and view the Arabic calendar for your location.
+               <h2 className="text-3xl font-black text-white tracking-tighter mt-8 mb-4">Noor</h2>
+               <p className="text-emerald-100/60 text-xs font-medium leading-relaxed px-4">
+                  {isLocating ? "Synchronizing with local stars..." : "Tap to enable Adhan notifications and sync the Islamic calendar for your location."}
                </p>
             </div>
             
             <button 
               onClick={handleUnlockAudio}
-              className="relative z-10 w-full bg-white text-[#064e3b] py-6 px-12 rounded-[2.5rem] font-black text-sm uppercase tracking-[0.3em] shadow-2xl active:scale-95 transition-all flex items-center justify-center gap-3"
+              disabled={isLocating}
+              className="relative z-10 w-full bg-white text-[#064e3b] py-6 px-12 rounded-[2.5rem] font-black text-sm uppercase tracking-[0.3em] shadow-2xl active:scale-95 transition-all flex items-center justify-center gap-3 disabled:opacity-50"
             >
-                <Sparkles size={18} className="animate-pulse" />
-                Bismillah
+                {isLocating ? <Sparkles size={18} className="animate-spin" /> : <Sparkles size={18} className="animate-pulse" />}
+                {isLocating ? "Locating..." : "Bismillah"}
             </button>
             
             <p className="mt-8 text-white/30 text-[9px] font-black uppercase tracking-widest flex items-center gap-2">
                <ShieldAlert size={12} />
-               Secure Audio Protocol
+               Secure Audio & Location Sync
             </p>
         </div>
       )}
