@@ -4,7 +4,7 @@ import { AppSection, PrayerTimes, LocationData, AdhanSettings } from '../types.t
 import { fetchPrayerTimes } from '../services/api.ts';
 import { db } from '../services/db.ts';
 import { ADHAN_OPTIONS } from '../constants.tsx';
-import { BookOpen, CircleDot, Clock, Heart, MapPin, ChevronRight, Sparkles, Compass, Calendar as CalendarIcon, Volume2, VolumeX, Loader2, BellRing, Map } from 'lucide-react';
+import { BookOpen, CircleDot, Clock, Heart, MapPin, ChevronRight, Sparkles, Compass, Calendar as CalendarIcon, Volume2, VolumeX, Loader2, BellRing, Map, Play } from 'lucide-react';
 
 interface HomeProps {
   onNavigate: (section: AppSection) => void;
@@ -94,8 +94,12 @@ const Home: React.FC<HomeProps> = ({ onNavigate, location, adhanSettings }) => {
     } else {
       const blob = await db.getAdhanAudio(adhanSettings.voiceId);
       manualAudioRef.current.src = blob ? URL.createObjectURL(blob) : selectedVoice.url;
-      manualAudioRef.current.play();
-      setIsManualPlaying(true);
+      try {
+        await manualAudioRef.current.play();
+        setIsManualPlaying(true);
+      } catch (e) {
+        alert("Audio failed. Please ensure your device is not on silent mode.");
+      }
     }
   };
 
@@ -103,7 +107,7 @@ const Home: React.FC<HomeProps> = ({ onNavigate, location, adhanSettings }) => {
 
   return (
     <div className="flex flex-col min-h-screen bg-[#f2f6f4] relative">
-      <audio ref={manualAudioRef} onEnded={() => setIsManualPlaying(false)} className="hidden" />
+      <audio ref={manualAudioRef} onEnded={() => setIsManualPlaying(false)} className="hidden" crossOrigin="anonymous" />
 
       <div className="fixed inset-0 z-0">
          <div className="absolute inset-0 bg-gradient-to-b from-[#064e3b] via-[#065f46] to-[#f2f6f4]" />
@@ -114,7 +118,7 @@ const Home: React.FC<HomeProps> = ({ onNavigate, location, adhanSettings }) => {
         <div className="pt-14 pb-16 px-6 flex flex-col items-center text-center">
           <div className="flex items-center gap-3 mb-10 bg-white/10 backdrop-blur-xl px-5 py-2.5 rounded-full border border-white/20 shadow-xl">
               <BellRing size={14} className="text-emerald-400 animate-pulse" />
-              <span className="text-[10px] font-black text-white uppercase tracking-[0.4em]">Adhan Active</span>
+              <span className="text-[10px] font-black text-white uppercase tracking-[0.4em]">Adhan Monitor Active</span>
           </div>
 
           <div className="mb-14 w-full px-4">
@@ -142,6 +146,7 @@ const Home: React.FC<HomeProps> = ({ onNavigate, location, adhanSettings }) => {
                     <button 
                       onClick={toggleManualAdhan}
                       className={`p-4 rounded-full transition-all active:scale-90 flex items-center justify-center shadow-2xl ${isManualPlaying ? 'bg-amber-500 text-emerald-950 animate-pulse' : 'bg-white/10 text-white hover:bg-white/20'}`}
+                      title="Test Audio"
                     >
                       {isManualPlaying ? <VolumeX size={24} /> : <Volume2 size={24} />}
                     </button>

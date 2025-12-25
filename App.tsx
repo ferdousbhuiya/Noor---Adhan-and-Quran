@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef } from 'react';
 import { AppSection, AppSettings, AdhanSettings, LocationData, PrayerTimes } from './types.ts';
 import Home from './components/Home.tsx';
@@ -12,7 +13,7 @@ import SettingsView from './components/Settings.tsx';
 import { db } from './services/db.ts';
 import { fetchPrayerTimes } from './services/api.ts';
 import { ADHAN_OPTIONS } from './constants.tsx';
-import { Home as HomeIcon, BookOpen, Clock, Heart, CircleDot, Settings as SettingsIcon, Volume2, ShieldAlert } from 'lucide-react';
+import { Home as HomeIcon, BookOpen, Clock, Heart, CircleDot, Settings as SettingsIcon, Volume2, ShieldAlert, WifiOff } from 'lucide-react';
 
 const DEFAULT_SETTINGS: AppSettings = {
   quran: {
@@ -35,6 +36,9 @@ const DEFAULT_SETTINGS: AppSettings = {
   tasbihTarget: 33
 };
 
+// 1-second silent base64 MP3 to keep audio alive
+const SILENT_AUDIO_URI = "data:audio/wav;base64,UklGRigAAABXQVZFVG1zIAlAAABiSWhpAAACABAAAAB3VlNDAgAAAAABAAH/AACCAAAAAAAAAGRhdGEAAAAA";
+
 const App: React.FC = () => {
   const [activeSection, setActiveSection] = useState<AppSection>(AppSection.Home);
   const [isDbReady, setIsDbReady] = useState(false);
@@ -46,7 +50,9 @@ const App: React.FC = () => {
 
   const [currentPrayerTimes, setCurrentPrayerTimes] = useState<PrayerTimes | null>(null);
   const adhanAudioRef = useRef<HTMLAudioElement | null>(null);
+  const keeperAudioRef = useRef<HTMLAudioElement | null>(null);
   const lastAdhanTriggered = useRef<string | null>(null);
+  const wakeLockRef = useRef<any>(null);
 
   const location = settings.location || null;
 
@@ -56,18 +62,15 @@ const App: React.FC = () => {
       try {
         await db.init();
       } catch (e) {
-        console.warn("DB initialization failed, proceeding with limited features", e);
+        console.warn("DB initialization failed", e);
       } finally {
         setIsDbReady(true);
-        // Call the global function to hide loader
         if (typeof (window as any).hideAppLoader === 'function') {
           (window as any).hideAppLoader();
         }
       }
 
-      // Geolocation with timeout to prevent hanging
       if (!settings.location || !settings.location.isManual) {
-        const geoOptions = { timeout: 8000, maximumAge: 60000 };
         navigator.geolocation.getCurrentPosition(
           (pos) => {
             updateLocation({
@@ -82,7 +85,7 @@ const App: React.FC = () => {
               updateLocation({ lat: 21.4225, lng: 39.8262, name: "Mecca", isManual: false });
             }
           },
-          geoOptions
+          { timeout: 10000, enableHighAccuracy: false }
         );
       }
     };
@@ -90,12 +93,29 @@ const App: React.FC = () => {
     initApp();
   }, []);
 
+  // Request WakeLock to keep screen on (mobile check)
+  useEffect(() => {
+    const requestWakeLock = async () => {
+      if ('wakeLock' in navigator && isAudioUnlocked) {
+        try {
+          wakeLockRef.current = await (navigator as any).wakeLock.request('screen');
+        } catch (err) {
+          console.warn("WakeLock failed:", err);
+        }
+      }
+    };
+    requestWakeLock();
+    return () => {
+      if (wakeLockRef.current) wakeLockRef.current.release();
+    };
+  }, [isAudioUnlocked]);
+
   // Sync Prayer Times for the Adhan Monitor
   useEffect(() => {
     if (location && isDbReady) {
       fetchPrayerTimes(location.lat, location.lng, settings.adhan.method, settings.adhan.school)
         .then(data => setCurrentPrayerTimes(data.times))
-        .catch(err => console.error("Could not sync prayer times for monitor", err));
+        .catch(err => console.error("Sync error", err));
     }
   }, [location, settings.adhan.method, settings.adhan.school, isDbReady]);
 
@@ -126,24 +146,13 @@ const App: React.FC = () => {
       
       if (navigator.vibrate) navigator.vibrate([500, 200, 500, 200, 500]);
 
-      if ("Notification" in window && Notification.permission === "granted") {
-        new Notification(`Time for ${pName}`, {
-          body: `It is currently ${timeStr}. Calling the Adhan.`,
-          icon: '/favicon.ico'
-        });
-      }
-
       if (adhanAudioRef.current) {
         try {
+          const voice = ADHAN_OPTIONS.find(v => v.id === settings.voiceId) || ADHAN_OPTIONS[0];
+          // Try fetching from DB first
           const blob = await db.getAdhanAudio(settings.adhan.voiceId);
-          if (blob) {
-            const url = URL.createObjectURL(blob);
-            adhanAudioRef.current.src = url;
-          } else {
-            const voice = ADHAN_OPTIONS.find(v => v.id === settings.adhan.voiceId) || ADHAN_OPTIONS[0];
-            adhanAudioRef.current.src = voice.url;
-          }
-          adhanAudioRef.current.load();
+          adhanAudioRef.current.src = blob ? URL.createObjectURL(blob) : voice.url;
+          
           await adhanAudioRef.current.play();
         } catch (e) {
           console.error("Adhan Playback Error", e);
@@ -151,29 +160,34 @@ const App: React.FC = () => {
       }
     };
 
-    const interval = setInterval(checkAdhan, 30000); 
+    const interval = setInterval(checkAdhan, 15000); // More frequent check for mobile
     return () => clearInterval(interval);
   }, [currentPrayerTimes, isAudioUnlocked, settings.adhan]);
 
-  const unlockAudio = () => {
-    // Immediate dismissal to ensure UI doesn't hang
+  const unlockAudio = async () => {
     setIsAudioUnlocked(true);
     
-    // Request notification permission if available
     if ("Notification" in window) {
-      Notification.requestPermission();
+      await Notification.requestPermission();
     }
 
-    // Try to "ping" the audio context to unlock it
+    // Initialize both audio elements with user gesture
+    if (keeperAudioRef.current) {
+      keeperAudioRef.current.src = SILENT_AUDIO_URI;
+      keeperAudioRef.current.loop = true;
+      try {
+        await keeperAudioRef.current.play();
+      } catch (e) {
+        console.warn("Keeper loop failed (likely normal)", e);
+      }
+    }
+
     if (adhanAudioRef.current) {
-      // Use a very short silent blob if needed, but usually play/pause on current state is enough
       adhanAudioRef.current.play().then(() => {
         setTimeout(() => {
           if (adhanAudioRef.current) adhanAudioRef.current.pause();
         }, 100);
-      }).catch((e) => {
-        console.warn("Audio Context Unlock Ping failed (this is expected in some environments)", e);
-      });
+      }).catch(() => {});
     }
   };
 
@@ -192,7 +206,8 @@ const App: React.FC = () => {
 
   return (
     <div className="flex flex-col min-h-screen bg-[#f2f6f4] max-w-lg mx-auto shadow-2xl relative overflow-hidden">
-      <audio ref={adhanAudioRef} className="hidden" />
+      <audio ref={adhanAudioRef} className="hidden" crossOrigin="anonymous" />
+      <audio ref={keeperAudioRef} className="hidden" />
 
       {/* Unlock Overlay */}
       {!isAudioUnlocked && (
@@ -206,19 +221,19 @@ const App: React.FC = () => {
             <div className="relative z-10">
               <h2 className="text-2xl font-black text-white tracking-tighter mb-4">Enable Automatic Adhan</h2>
               <p className="text-emerald-100/60 text-sm font-medium leading-relaxed mb-10 px-4">
-                  To allow Noor to call the Adhan at prayer times, we need your permission to start the audio engine.
+                  Due to mobile privacy rules, we need your tap to activate the Adhan engine and keep the session active.
               </p>
               
               <button 
                 onClick={unlockAudio}
                 className="w-full bg-emerald-500 text-emerald-950 py-6 px-12 rounded-[2.5rem] font-black text-sm uppercase tracking-[0.3em] shadow-2xl shadow-emerald-500/20 active:scale-95 transition-all hover:bg-emerald-400"
               >
-                  Bismillah
+                  Activate Noor
               </button>
               
               <div className="mt-8 flex items-center justify-center gap-2 text-white/30 text-[9px] font-black uppercase tracking-widest">
                  <ShieldAlert size={12} />
-                 <span>Keep this tab open to receive alerts</span>
+                 <span>Keep app open for best results</span>
               </div>
             </div>
         </div>
