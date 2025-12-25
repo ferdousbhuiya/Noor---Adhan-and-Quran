@@ -1,9 +1,10 @@
+
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { fetchPrayerTimes, geocodeAddress, fetchLocationSuggestions } from '../services/api';
 import { PrayerTimes, AdhanSettings, LocationData } from '../types';
 import { ADHAN_OPTIONS, PRAYER_METHODS, PRAYER_SCHOOLS } from '../constants';
 import { db } from '../services/db';
-import { Bell, BellOff, Volume2, Loader2, Check, Settings2, MapPin, X, Download, Trash2, CheckCircle2, Play, Pause, AlertCircle, Calculator, Crosshair, ChevronRight, Search } from 'lucide-react';
+import { Bell, BellOff, Volume2, Loader2, Check, Settings2, MapPin, X, Download, Trash2, CheckCircle2, Play, Pause, AlertCircle, Calculator, Crosshair, ChevronRight, Search, Sparkles } from 'lucide-react';
 
 interface AdhanProps {
   location: LocationData | null;
@@ -38,6 +39,7 @@ const Adhan: React.FC<AdhanProps> = ({ location, settings, onUpdateSettings, onU
   const [isSearching, setIsSearching] = useState(false);
   const [isSuggesting, setIsSuggesting] = useState(false);
   const [searchError, setSearchError] = useState<string | null>(null);
+  const [needsKey, setNeedsKey] = useState(false);
   const debounceTimer = useRef<number | null>(null);
 
   useEffect(() => {
@@ -140,8 +142,11 @@ const Adhan: React.FC<AdhanProps> = ({ location, settings, onUpdateSettings, onU
       try {
         const results = await fetchLocationSuggestions(searchQuery);
         setSuggestions(results);
-      } catch (err) {
-        console.error(err);
+        setNeedsKey(false);
+      } catch (err: any) {
+        if (err.message === "API_KEY_MISSING") {
+          setNeedsKey(true);
+        }
       } finally {
         setIsSuggesting(false);
       }
@@ -176,7 +181,11 @@ const Adhan: React.FC<AdhanProps> = ({ location, settings, onUpdateSettings, onU
       setSearchQuery("");
       setSuggestions([]);
     } catch (e: any) {
-      setSearchError(e.message || "Failed to find coordinates for this location.");
+      if (e.message === "API_KEY_MISSING") {
+        setNeedsKey(true);
+      } else {
+        setSearchError(e.message || "Failed to find coordinates for this location.");
+      }
     } finally {
       setIsSearching(false);
     }
@@ -203,6 +212,22 @@ const Adhan: React.FC<AdhanProps> = ({ location, settings, onUpdateSettings, onU
       setSearchError("Location access denied or GPS disabled.");
       setIsSearching(false);
     }, { timeout: 10000 });
+  };
+
+  const handleSelectKey = async () => {
+    if (window.aistudio?.openSelectKey) {
+      await window.aistudio.openSelectKey();
+      setNeedsKey(false);
+      // After selection, retry suggestion if search query exists
+      if (searchQuery.length >= 2) {
+        try {
+          const results = await fetchLocationSuggestions(searchQuery);
+          setSuggestions(results);
+        } catch (e) {
+          console.error("Retry failed", e);
+        }
+      }
+    }
   };
 
   if (loading) return (
@@ -405,6 +430,23 @@ const Adhan: React.FC<AdhanProps> = ({ location, settings, onUpdateSettings, onU
             </header>
 
             <div className="space-y-5 overflow-y-auto no-scrollbar pb-10">
+              {needsKey && (
+                <div className="bg-amber-50 border border-amber-100 p-5 rounded-[2.2rem] flex flex-col gap-4 animate-in zoom-in duration-300">
+                   <div className="flex gap-3">
+                      <Sparkles size={18} className="text-amber-600 shrink-0" />
+                      <p className="text-[11px] font-black text-amber-900 uppercase tracking-tight">AI Activation Required</p>
+                   </div>
+                   <p className="text-[10px] font-bold text-amber-800 leading-relaxed">To use the Smart Location Finder, please select an API key from your project.</p>
+                   <button 
+                    onClick={handleSelectKey}
+                    className="bg-emerald-900 text-white py-4 rounded-2xl font-black text-[10px] uppercase tracking-widest shadow-lg active:scale-95"
+                   >
+                     Select API Key
+                   </button>
+                   <a href="https://ai.google.dev/gemini-api/docs/billing" target="_blank" className="text-center text-[8px] font-black text-amber-600/50 underline uppercase">Billing Documentation</a>
+                </div>
+              )}
+
               {searchError && (
                 <div className="bg-rose-50 border border-rose-100 p-4 rounded-3xl flex gap-3 animate-in fade-in slide-in-from-top-2">
                    <AlertCircle size={16} className="text-rose-600 shrink-0 mt-0.5" />

@@ -1,3 +1,4 @@
+
 import { Surah, Ayah, PrayerTimes } from '../types';
 import { db } from './db';
 import { GoogleGenAI, Type } from "@google/genai";
@@ -14,8 +15,19 @@ const safeParseJSON = (text: string) => {
     return JSON.parse(cleaned);
   } catch (e) {
     console.error("JSON Parse Error", e, text);
-    throw new Error("Invalid AI response format");
+    throw new Error("Invalid AI response format from server.");
   }
+};
+
+/**
+ * Robust GoogleGenAI initialization
+ */
+const getAIClient = () => {
+  const apiKey = process.env.API_KEY;
+  if (!apiKey) {
+    throw new Error("API_KEY_MISSING");
+  }
+  return new GoogleGenAI({ apiKey });
 };
 
 export const fetchSurahs = async (): Promise<Surah[]> => {
@@ -52,8 +64,8 @@ export const fetchSurahAyahs = async (surahNumber: number, reciter: string = 'ar
 
 export const fetchLocationSuggestions = async (query: string): Promise<string[]> => {
   if (!query || query.length < 2) return [];
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   try {
+    const ai = getAIClient();
     const response = await ai.models.generateContent({
       model: "gemini-3-flash-preview",
       contents: `List 5 real-world cities or locations matching "${query}". Include the country name for clarity. Return only as a JSON string array.`,
@@ -68,12 +80,13 @@ export const fetchLocationSuggestions = async (query: string): Promise<string[]>
     return safeParseJSON(response.text);
   } catch (e) {
     console.error("Suggestion error", e);
+    if (e.message === "API_KEY_MISSING") throw e;
     return [];
   }
 };
 
 export const geocodeAddress = async (address: string): Promise<{ lat: number, lng: number, name: string }> => {
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  const ai = getAIClient();
   const response = await ai.models.generateContent({
     model: "gemini-3-flash-preview",
     contents: `Find the precise coordinates (latitude, longitude) and official full name for the location: "${address}". Return the data as a JSON object with properties 'lat', 'lng', and 'name'.`,
