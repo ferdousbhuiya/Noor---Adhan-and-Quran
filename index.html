@@ -111,7 +111,6 @@
             }
         });
 
-        // Global function to hide the loader from the React side
         window.hideAppLoader = () => {
             const loader = document.getElementById('app-loader');
             if (loader) {
@@ -120,7 +119,6 @@
             }
         };
 
-        // Safety timeout to remove loader if React hangs or environment blocks initial mount
         setTimeout(window.hideAppLoader, 6000);
     </script>
 </head>

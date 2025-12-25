@@ -1,10 +1,22 @@
-
 import { Surah, Ayah, PrayerTimes } from '../types';
 import { db } from './db';
 import { GoogleGenAI, Type } from "@google/genai";
 
 const QURAN_API_BASE = 'https://api.alquran.cloud/v1';
 const PRAYER_API_BASE = 'https://api.aladhan.com/v1';
+
+/**
+ * Utility to safely extract and parse JSON from AI response
+ */
+const safeParseJSON = (text: string) => {
+  try {
+    const cleaned = text.replace(/```json/g, '').replace(/```/g, '').trim();
+    return JSON.parse(cleaned);
+  } catch (e) {
+    console.error("JSON Parse Error", e, text);
+    throw new Error("Invalid AI response format");
+  }
+};
 
 export const fetchSurahs = async (): Promise<Surah[]> => {
   const localSurahs = await db.getSurahs();
@@ -44,7 +56,7 @@ export const fetchLocationSuggestions = async (query: string): Promise<string[]>
   try {
     const response = await ai.models.generateContent({
       model: "gemini-3-flash-preview",
-      contents: `Provide a JSON list of 5 real-world city/location suggestions for the search query: "${query}". Return only a string array of city names with their country.`,
+      contents: `List 5 real-world cities or locations matching "${query}". Include the country name for clarity. Return only as a JSON string array.`,
       config: {
         responseMimeType: "application/json",
         responseSchema: {
@@ -53,7 +65,7 @@ export const fetchLocationSuggestions = async (query: string): Promise<string[]>
         }
       }
     });
-    return JSON.parse(response.text);
+    return safeParseJSON(response.text);
   } catch (e) {
     console.error("Suggestion error", e);
     return [];
@@ -64,7 +76,7 @@ export const geocodeAddress = async (address: string): Promise<{ lat: number, ln
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   const response = await ai.models.generateContent({
     model: "gemini-3-flash-preview",
-    contents: `Resolve this location string into geographical coordinates: "${address}". Return the official city name, latitude, and longitude accurately.`,
+    contents: `Find the precise coordinates (latitude, longitude) and official full name for the location: "${address}". Return the data as a JSON object with properties 'lat', 'lng', and 'name'.`,
     config: {
       responseMimeType: "application/json",
       responseSchema: {
@@ -79,8 +91,10 @@ export const geocodeAddress = async (address: string): Promise<{ lat: number, ln
     }
   });
   
-  const result = JSON.parse(response.text);
-  if (!result.lat || !result.lng) throw new Error("Could not resolve location");
+  const result = safeParseJSON(response.text);
+  if (typeof result.lat !== 'number' || typeof result.lng !== 'number') {
+    throw new Error("Could not resolve coordinates for this location.");
+  }
   return result;
 };
 

@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { fetchPrayerTimes, geocodeAddress, fetchLocationSuggestions } from '../services/api';
 import { PrayerTimes, AdhanSettings, LocationData } from '../types';
@@ -38,6 +37,7 @@ const Adhan: React.FC<AdhanProps> = ({ location, settings, onUpdateSettings, onU
   const [suggestions, setSuggestions] = useState<string[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [isSuggesting, setIsSuggesting] = useState(false);
+  const [searchError, setSearchError] = useState<string | null>(null);
   const debounceTimer = useRef<number | null>(null);
 
   useEffect(() => {
@@ -128,7 +128,6 @@ const Adhan: React.FC<AdhanProps> = ({ location, settings, onUpdateSettings, onU
     return () => clearInterval(timer);
   }, [currentAndNext]);
 
-  // Debounced suggestion fetch
   useEffect(() => {
     if (debounceTimer.current) window.clearTimeout(debounceTimer.current);
     if (!searchQuery || searchQuery.length < 2) {
@@ -138,9 +137,14 @@ const Adhan: React.FC<AdhanProps> = ({ location, settings, onUpdateSettings, onU
 
     setIsSuggesting(true);
     debounceTimer.current = window.setTimeout(async () => {
-      const results = await fetchLocationSuggestions(searchQuery);
-      setSuggestions(results);
-      setIsSuggesting(false);
+      try {
+        const results = await fetchLocationSuggestions(searchQuery);
+        setSuggestions(results);
+      } catch (err) {
+        console.error(err);
+      } finally {
+        setIsSuggesting(false);
+      }
     }, 600) as unknown as number;
 
     return () => {
@@ -164,14 +168,15 @@ const Adhan: React.FC<AdhanProps> = ({ location, settings, onUpdateSettings, onU
 
   const handleSelection = async (name: string) => {
     setIsSearching(true);
+    setSearchError(null);
     try {
       const result = await geocodeAddress(name);
       onUpdateLocation({ ...result, isManual: true });
       setShowLocationModal(false);
       setSearchQuery("");
       setSuggestions([]);
-    } catch (e) {
-      alert("Error resolving location coordinates.");
+    } catch (e: any) {
+      setSearchError(e.message || "Failed to find coordinates for this location.");
     } finally {
       setIsSearching(false);
     }
@@ -184,6 +189,7 @@ const Adhan: React.FC<AdhanProps> = ({ location, settings, onUpdateSettings, onU
 
   const useCurrentLocation = () => {
     setIsSearching(true);
+    setSearchError(null);
     navigator.geolocation.getCurrentPosition((pos) => {
       onUpdateLocation({
         lat: pos.coords.latitude,
@@ -194,9 +200,9 @@ const Adhan: React.FC<AdhanProps> = ({ location, settings, onUpdateSettings, onU
       setShowLocationModal(false);
       setIsSearching(false);
     }, () => {
-      alert("Location access denied.");
+      setSearchError("Location access denied or GPS disabled.");
       setIsSearching(false);
-    });
+    }, { timeout: 10000 });
   };
 
   if (loading) return (
@@ -214,7 +220,7 @@ const Adhan: React.FC<AdhanProps> = ({ location, settings, onUpdateSettings, onU
         <div className="flex justify-between items-end mb-6">
           <div>
             <h1 className="text-4xl font-black text-slate-800 tracking-tighter mb-1">Adhan</h1>
-            <button onClick={() => setShowLocationModal(true)} className="flex items-center gap-2 text-emerald-600 group">
+            <button onClick={() => { setSearchError(null); setShowLocationModal(true); }} className="flex items-center gap-2 text-emerald-600 group">
               <MapPin size={12} fill="currentColor" className="group-hover:animate-bounce" />
               <span className="text-[10px] font-black uppercase tracking-widest">{location?.name || 'Set Location'}</span>
             </button>
@@ -389,8 +395,8 @@ const Adhan: React.FC<AdhanProps> = ({ location, settings, onUpdateSettings, onU
 
       {showLocationModal && (
         <div className="fixed inset-0 bg-black/70 backdrop-blur-xl z-[200] flex items-end justify-center p-4">
-          <div className="bg-white w-full max-w-lg rounded-t-[4rem] p-10 shadow-2xl animate-in slide-in-from-bottom duration-500 relative flex flex-col max-h-[90vh]">
-            <header className="flex justify-between items-center mb-8 shrink-0">
+          <div className="bg-white w-full max-w-lg rounded-t-[4rem] p-8 shadow-2xl animate-in slide-in-from-bottom duration-500 relative flex flex-col max-h-[90vh]">
+            <header className="flex justify-between items-center mb-6 shrink-0">
               <div>
                 <h3 className="font-black text-2xl tracking-tighter">Location Finder</h3>
                 <p className="text-[10px] text-slate-400 font-black uppercase tracking-widest">AI Assisted Search</p>
@@ -398,13 +404,20 @@ const Adhan: React.FC<AdhanProps> = ({ location, settings, onUpdateSettings, onU
               <button onClick={() => setShowLocationModal(false)} className="p-3 bg-slate-50 rounded-full"><X size={20} /></button>
             </header>
 
-            <div className="space-y-6 overflow-y-auto no-scrollbar pb-10">
+            <div className="space-y-5 overflow-y-auto no-scrollbar pb-10">
+              {searchError && (
+                <div className="bg-rose-50 border border-rose-100 p-4 rounded-3xl flex gap-3 animate-in fade-in slide-in-from-top-2">
+                   <AlertCircle size={16} className="text-rose-600 shrink-0 mt-0.5" />
+                   <p className="text-[10px] font-bold text-rose-800 leading-tight">{searchError}</p>
+                </div>
+              )}
+
               <div className="relative group">
                 <input 
                   value={searchQuery} 
-                  onChange={e => setSearchQuery(e.target.value)} 
-                  placeholder="Type city name..." 
-                  className="w-full bg-slate-50 border-2 border-transparent rounded-[2rem] p-6 pr-16 text-sm font-bold outline-none focus:bg-white focus:border-emerald-500/20 transition-all shadow-inner"
+                  onChange={e => { setSearchQuery(e.target.value); setSearchError(null); }} 
+                  placeholder="e.g. London, UK" 
+                  className="w-full bg-slate-50 border-2 border-transparent rounded-[2rem] p-5 pr-16 text-sm font-bold outline-none focus:bg-white focus:border-emerald-500/20 transition-all shadow-inner"
                   onKeyPress={(e) => e.key === 'Enter' && handleManualSearch()}
                 />
                 <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-2">
@@ -412,7 +425,7 @@ const Adhan: React.FC<AdhanProps> = ({ location, settings, onUpdateSettings, onU
                     <button 
                         onClick={handleManualSearch}
                         disabled={isSearching || !searchQuery}
-                        className="p-4 bg-emerald-950 text-white rounded-2xl disabled:opacity-30 transition-all active:scale-90"
+                        className="p-3.5 bg-emerald-950 text-white rounded-2xl disabled:opacity-30 transition-all active:scale-90"
                     >
                         {isSearching ? <Loader2 size={18} className="animate-spin" /> : <Search size={18} />}
                     </button>
@@ -420,28 +433,29 @@ const Adhan: React.FC<AdhanProps> = ({ location, settings, onUpdateSettings, onU
               </div>
 
               {suggestions.length > 0 && (
-                <div className="bg-slate-50/50 rounded-[2.5rem] border border-slate-100 overflow-hidden animate-in fade-in slide-in-from-top-4 duration-300">
+                <div className="bg-white rounded-[2.5rem] border border-slate-100 overflow-hidden animate-in fade-in slide-in-from-top-4 duration-300 shadow-xl shadow-slate-200/50">
+                  <p className="text-[8px] font-black text-slate-300 uppercase tracking-widest p-4 pb-2">Did you mean?</p>
                   {suggestions.map((s, i) => (
                     <button 
                       key={i} 
                       onClick={() => handleSelection(s)}
-                      className="w-full text-left p-6 hover:bg-emerald-50 transition-colors flex items-center justify-between group border-b border-slate-100 last:border-0"
+                      className="w-full text-left p-5 hover:bg-emerald-50 transition-colors flex items-center justify-between group border-b border-slate-50 last:border-0"
                     >
                       <div className="flex items-center gap-4">
-                         <div className="p-2 bg-white rounded-xl shadow-sm text-slate-400 group-hover:text-emerald-600 transition-colors">
-                            <MapPin size={16} />
+                         <div className="p-2 bg-slate-50 rounded-xl group-hover:bg-white transition-colors">
+                            <MapPin size={16} className="text-slate-400 group-hover:text-emerald-600" />
                          </div>
                          <span className="text-sm font-black text-slate-700">{s}</span>
                       </div>
-                      <ChevronRight size={16} className="text-slate-300 group-hover:translate-x-1 transition-transform" />
+                      <ChevronRight size={14} className="text-slate-200 group-hover:translate-x-1 transition-transform" />
                     </button>
                   ))}
                 </div>
               )}
 
-              <div className="flex items-center gap-4 py-4">
+              <div className="flex items-center gap-4 py-2">
                  <div className="h-px flex-1 bg-slate-100" />
-                 <span className="text-[8px] font-black text-slate-300 uppercase tracking-widest">Or</span>
+                 <span className="text-[8px] font-black text-slate-300 uppercase tracking-widest">or use sensors</span>
                  <div className="h-px flex-1 bg-slate-100" />
               </div>
 
@@ -451,13 +465,8 @@ const Adhan: React.FC<AdhanProps> = ({ location, settings, onUpdateSettings, onU
                 className="w-full bg-white border-2 border-emerald-900 text-emerald-950 p-6 rounded-[2.2rem] font-black uppercase tracking-widest flex items-center justify-center gap-3 active:scale-[0.98] transition-all shadow-xl shadow-emerald-900/5"
               >
                 {isSearching ? <Loader2 size={20} className="animate-spin" /> : <Crosshair size={20} />}
-                Use GPS Coordinates
+                Pinpoint via GPS
               </button>
-              
-              <div className="pt-4 flex items-center gap-3 p-5 bg-emerald-50 rounded-3xl text-[9px] font-bold text-emerald-700 leading-relaxed uppercase tracking-widest">
-                  <AlertCircle size={14} className="shrink-0" />
-                  <span>The Hijri date and calculation method will automatically sync based on your selection.</span>
-              </div>
             </div>
           </div>
         </div>
