@@ -1,3 +1,4 @@
+
 import { Surah, Ayah, PrayerTimes } from '../types';
 import { db } from './db';
 import { GoogleGenAI, Type } from "@google/genai";
@@ -37,11 +38,33 @@ export const fetchSurahAyahs = async (surahNumber: number, reciter: string = 'ar
   }));
 };
 
+export const fetchLocationSuggestions = async (query: string): Promise<string[]> => {
+  if (!query || query.length < 2) return [];
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  try {
+    const response = await ai.models.generateContent({
+      model: "gemini-3-flash-preview",
+      contents: `Provide a JSON list of 5 real-world city/location suggestions for the search query: "${query}". Return only a string array of city names with their country.`,
+      config: {
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.ARRAY,
+          items: { type: Type.STRING }
+        }
+      }
+    });
+    return JSON.parse(response.text);
+  } catch (e) {
+    console.error("Suggestion error", e);
+    return [];
+  }
+};
+
 export const geocodeAddress = async (address: string): Promise<{ lat: number, lng: number, name: string }> => {
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   const response = await ai.models.generateContent({
     model: "gemini-3-flash-preview",
-    contents: `Resolve this location string into geographical coordinates: "${address}". Return the official city name, latitude, and longitude.`,
+    contents: `Resolve this location string into geographical coordinates: "${address}". Return the official city name, latitude, and longitude accurately.`,
     config: {
       responseMimeType: "application/json",
       responseSchema: {
@@ -56,23 +79,22 @@ export const geocodeAddress = async (address: string): Promise<{ lat: number, ln
     }
   });
   
-  return JSON.parse(response.text);
+  const result = JSON.parse(response.text);
+  if (!result.lat || !result.lng) throw new Error("Could not resolve location");
+  return result;
 };
 
 export const fetchHijriCalendar = async (year: number, month: number, lat: number, lng: number): Promise<any[]> => {
-  // Use /calendar endpoint which is more robust than /gCalendar
   const url = `${PRAYER_API_BASE}/calendar?latitude=${lat}&longitude=${lng}&method=4&month=${month}&year=${year}`;
   try {
     const res = await fetch(url);
     if (!res.ok) throw new Error(`API returned ${res.status}`);
     const data = await res.json();
     
-    // The calendar endpoint returns an array of days for the month
     if (data.data && Array.isArray(data.data)) {
       return data.data;
     }
     
-    // Fallback if data structure is unexpected
     if (data.data && typeof data.data === 'object') {
        return Object.keys(data.data)
         .sort((a, b) => parseInt(a) - parseInt(b))
@@ -89,7 +111,7 @@ export const fetchHijriCalendar = async (year: number, month: number, lat: numbe
 export const fetchPrayerTimes = async (
   latitude: number, 
   longitude: number, 
-  method: number = 4, // Default to Umm al-Qura
+  method: number = 4, 
   school: number = 0,
   fajrAngle?: number,
   ishaAngle?: number

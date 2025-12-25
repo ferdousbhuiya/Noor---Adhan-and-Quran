@@ -1,10 +1,10 @@
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { fetchPrayerTimes, geocodeAddress } from '../services/api';
+import { fetchPrayerTimes, geocodeAddress, fetchLocationSuggestions } from '../services/api';
 import { PrayerTimes, AdhanSettings, LocationData } from '../types';
 import { ADHAN_OPTIONS, PRAYER_METHODS, PRAYER_SCHOOLS } from '../constants';
 import { db } from '../services/db';
-import { Bell, BellOff, Volume2, Loader2, Check, Settings2, MapPin, X, Download, Trash2, CheckCircle2, Play, Pause, AlertCircle, Calculator, Crosshair, ChevronRight } from 'lucide-react';
+import { Bell, BellOff, Volume2, Loader2, Check, Settings2, MapPin, X, Download, Trash2, CheckCircle2, Play, Pause, AlertCircle, Calculator, Crosshair, ChevronRight, Search } from 'lucide-react';
 
 interface AdhanProps {
   location: LocationData | null;
@@ -30,13 +30,15 @@ const Adhan: React.FC<AdhanProps> = ({ location, settings, onUpdateSettings, onU
   const [downloadedIds, setDownloadedIds] = useState<string[]>([]);
   const [isDownloading, setIsDownloading] = useState<string | null>(null);
   const [isPreviewPlaying, setIsPreviewPlaying] = useState<string | null>(null);
-  const [isBuffering, setIsBuffering] = useState(false);
   
   const audioRef = useRef<HTMLAudioElement | null>(null);
   
   const [showLocationModal, setShowLocationModal] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+  const [suggestions, setSuggestions] = useState<string[]>([]);
   const [isSearching, setIsSearching] = useState(false);
+  const [isSuggesting, setIsSuggesting] = useState(false);
+  const debounceTimer = useRef<number | null>(null);
 
   useEffect(() => {
     db.getAllDownloadedAdhanIds().then(setDownloadedIds);
@@ -126,38 +128,58 @@ const Adhan: React.FC<AdhanProps> = ({ location, settings, onUpdateSettings, onU
     return () => clearInterval(timer);
   }, [currentAndNext]);
 
+  // Debounced suggestion fetch
+  useEffect(() => {
+    if (debounceTimer.current) window.clearTimeout(debounceTimer.current);
+    if (!searchQuery || searchQuery.length < 2) {
+      setSuggestions([]);
+      return;
+    }
+
+    setIsSuggesting(true);
+    debounceTimer.current = window.setTimeout(async () => {
+      const results = await fetchLocationSuggestions(searchQuery);
+      setSuggestions(results);
+      setIsSuggesting(false);
+    }, 600) as unknown as number;
+
+    return () => {
+      if (debounceTimer.current) window.clearTimeout(debounceTimer.current);
+    };
+  }, [searchQuery]);
+
   const togglePreview = (id: string, url: string) => {
     if (!audioRef.current) return;
     if (isPreviewPlaying === id) {
       audioRef.current.pause();
       setIsPreviewPlaying(null);
-      setIsBuffering(false);
       return;
     }
-    setIsBuffering(true);
     setIsPreviewPlaying(id);
     audioRef.current.pause();
     audioRef.current.src = url;
     audioRef.current.load();
-    audioRef.current.play().catch(() => {
-      setIsPreviewPlaying(null);
-      setIsBuffering(false);
-    });
+    audioRef.current.play().catch(() => setIsPreviewPlaying(null));
+  };
+
+  const handleSelection = async (name: string) => {
+    setIsSearching(true);
+    try {
+      const result = await geocodeAddress(name);
+      onUpdateLocation({ ...result, isManual: true });
+      setShowLocationModal(false);
+      setSearchQuery("");
+      setSuggestions([]);
+    } catch (e) {
+      alert("Error resolving location coordinates.");
+    } finally {
+      setIsSearching(false);
+    }
   };
 
   const handleManualSearch = async () => {
     if (!searchQuery.trim()) return;
-    setIsSearching(true);
-    try {
-      const result = await geocodeAddress(searchQuery);
-      onUpdateLocation({ ...result, isManual: true });
-      setShowLocationModal(false);
-      setSearchQuery("");
-    } catch (e) {
-      alert("Could not find that location. Please be more specific (e.g., 'London, UK').");
-    } finally {
-      setIsSearching(false);
-    }
+    handleSelection(searchQuery);
   };
 
   const useCurrentLocation = () => {
@@ -367,32 +389,55 @@ const Adhan: React.FC<AdhanProps> = ({ location, settings, onUpdateSettings, onU
 
       {showLocationModal && (
         <div className="fixed inset-0 bg-black/70 backdrop-blur-xl z-[200] flex items-end justify-center p-4">
-          <div className="bg-white w-full max-w-lg rounded-t-[4rem] p-10 shadow-2xl animate-in slide-in-from-bottom duration-500">
-            <header className="flex justify-between items-center mb-10">
+          <div className="bg-white w-full max-w-lg rounded-t-[4rem] p-10 shadow-2xl animate-in slide-in-from-bottom duration-500 relative flex flex-col max-h-[90vh]">
+            <header className="flex justify-between items-center mb-8 shrink-0">
               <div>
                 <h3 className="font-black text-2xl tracking-tighter">Location Finder</h3>
-                <p className="text-[10px] text-slate-400 font-black uppercase tracking-widest">AI Geolocation Engine</p>
+                <p className="text-[10px] text-slate-400 font-black uppercase tracking-widest">AI Assisted Search</p>
               </div>
               <button onClick={() => setShowLocationModal(false)} className="p-3 bg-slate-50 rounded-full"><X size={20} /></button>
             </header>
 
-            <div className="space-y-6">
+            <div className="space-y-6 overflow-y-auto no-scrollbar pb-10">
               <div className="relative group">
                 <input 
                   value={searchQuery} 
                   onChange={e => setSearchQuery(e.target.value)} 
-                  placeholder="e.g. Dhaka, Bangladesh" 
-                  className="w-full bg-slate-50 border-2 border-transparent rounded-3xl p-6 pr-16 text-sm font-bold outline-none focus:bg-white focus:border-emerald-500/20 transition-all shadow-inner"
+                  placeholder="Type city name..." 
+                  className="w-full bg-slate-50 border-2 border-transparent rounded-[2rem] p-6 pr-16 text-sm font-bold outline-none focus:bg-white focus:border-emerald-500/20 transition-all shadow-inner"
                   onKeyPress={(e) => e.key === 'Enter' && handleManualSearch()}
                 />
-                <button 
-                    onClick={handleManualSearch}
-                    disabled={isSearching || !searchQuery}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 p-4 bg-emerald-950 text-white rounded-2xl disabled:opacity-30 transition-all active:scale-90"
-                >
-                    {isSearching ? <Loader2 size={18} className="animate-spin" /> : <ChevronRight size={18} />}
-                </button>
+                <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-2">
+                    {isSuggesting && <Loader2 size={16} className="animate-spin text-emerald-600 mr-2" />}
+                    <button 
+                        onClick={handleManualSearch}
+                        disabled={isSearching || !searchQuery}
+                        className="p-4 bg-emerald-950 text-white rounded-2xl disabled:opacity-30 transition-all active:scale-90"
+                    >
+                        {isSearching ? <Loader2 size={18} className="animate-spin" /> : <Search size={18} />}
+                    </button>
+                </div>
               </div>
+
+              {suggestions.length > 0 && (
+                <div className="bg-slate-50/50 rounded-[2.5rem] border border-slate-100 overflow-hidden animate-in fade-in slide-in-from-top-4 duration-300">
+                  {suggestions.map((s, i) => (
+                    <button 
+                      key={i} 
+                      onClick={() => handleSelection(s)}
+                      className="w-full text-left p-6 hover:bg-emerald-50 transition-colors flex items-center justify-between group border-b border-slate-100 last:border-0"
+                    >
+                      <div className="flex items-center gap-4">
+                         <div className="p-2 bg-white rounded-xl shadow-sm text-slate-400 group-hover:text-emerald-600 transition-colors">
+                            <MapPin size={16} />
+                         </div>
+                         <span className="text-sm font-black text-slate-700">{s}</span>
+                      </div>
+                      <ChevronRight size={16} className="text-slate-300 group-hover:translate-x-1 transition-transform" />
+                    </button>
+                  ))}
+                </div>
+              )}
 
               <div className="flex items-center gap-4 py-4">
                  <div className="h-px flex-1 bg-slate-100" />
@@ -406,12 +451,12 @@ const Adhan: React.FC<AdhanProps> = ({ location, settings, onUpdateSettings, onU
                 className="w-full bg-white border-2 border-emerald-900 text-emerald-950 p-6 rounded-[2.2rem] font-black uppercase tracking-widest flex items-center justify-center gap-3 active:scale-[0.98] transition-all shadow-xl shadow-emerald-900/5"
               >
                 {isSearching ? <Loader2 size={20} className="animate-spin" /> : <Crosshair size={20} />}
-                Pin Exact Location
+                Use GPS Coordinates
               </button>
               
-              <div className="pt-4 flex items-center gap-3 p-4 bg-emerald-50 rounded-3xl text-[9px] font-bold text-emerald-700 leading-relaxed uppercase tracking-widest">
+              <div className="pt-4 flex items-center gap-3 p-5 bg-emerald-50 rounded-3xl text-[9px] font-bold text-emerald-700 leading-relaxed uppercase tracking-widest">
                   <AlertCircle size={14} className="shrink-0" />
-                  <span>The calculation method and Hijri date will automatically sync based on the coordinates found.</span>
+                  <span>The Hijri date and calculation method will automatically sync based on your selection.</span>
               </div>
             </div>
           </div>
