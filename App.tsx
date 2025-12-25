@@ -1,6 +1,5 @@
-
 import React, { useState, useEffect, useRef } from 'react';
-import { AppSection, AppSettings, AdhanSettings, LocationData, PrayerTimes } from './types.ts';
+import { AppSection, AppSettings, LocationData, PrayerTimes } from './types.ts';
 import Home from './components/Home.tsx';
 import Quran from './components/Quran.tsx';
 import Tasbih from './components/Tasbih.tsx';
@@ -12,8 +11,7 @@ import Explore from './components/Explore.tsx';
 import SettingsView from './components/Settings.tsx';
 import { db } from './services/db.ts';
 import { fetchPrayerTimes } from './services/api.ts';
-import { ADHAN_OPTIONS } from './constants.tsx';
-import { Home as HomeIcon, BookOpen, Clock, Heart, CircleDot, Settings as SettingsIcon, Volume2, ShieldAlert, WifiOff } from 'lucide-react';
+import { Home as HomeIcon, BookOpen, Settings as SettingsIcon, Navigation, Sparkles, Volume2, ShieldAlert } from 'lucide-react';
 
 const DEFAULT_SETTINGS: AppSettings = {
   quran: {
@@ -36,8 +34,8 @@ const DEFAULT_SETTINGS: AppSettings = {
   tasbihTarget: 33
 };
 
-// 1-second silent base64 MP3 to keep audio alive
-const SILENT_AUDIO_URI = "data:audio/wav;base64,UklGRigAAABXQVZFVG1zIAlAAABiSWhpAAACABAAAAB3VlNDAgAAAAABAAH/AACCAAAAAAAAAGRhdGEAAAAA";
+// Valid 1-second silent WAV to unlock audio on mobile
+const SILENT_AUDIO_URI = "data:audio/wav;base64,UklGRjIAAABXQVZFVG10IBAAAAABAAEAIlYAAClVGAAAgAAAAAABAAgAZGF0YRAAAACAgICAgICAgICAgICAgICA";
 
 const App: React.FC = () => {
   const [activeSection, setActiveSection] = useState<AppSection>(AppSection.Home);
@@ -47,22 +45,21 @@ const App: React.FC = () => {
     const saved = localStorage.getItem('noor_settings');
     return saved ? JSON.parse(saved) : DEFAULT_SETTINGS;
   });
+  
+  const [location, setLocation] = useState<LocationData | null>(() => {
+    const saved = localStorage.getItem('noor_location');
+    return saved ? JSON.parse(saved) : null;
+  });
 
-  const [currentPrayerTimes, setCurrentPrayerTimes] = useState<PrayerTimes | null>(null);
-  const adhanAudioRef = useRef<HTMLAudioElement | null>(null);
-  const keeperAudioRef = useRef<HTMLAudioElement | null>(null);
-  const lastAdhanTriggered = useRef<string | null>(null);
-  const wakeLockRef = useRef<any>(null);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
 
-  const location = settings.location || null;
-
-  // Initialize DB and Location
+  // Initialize DB and hide loader
   useEffect(() => {
     const initApp = async () => {
       try {
         await db.init();
       } catch (e) {
-        console.warn("DB initialization failed", e);
+        console.warn("DB init error", e);
       } finally {
         setIsDbReady(true);
         if (typeof (window as any).hideAppLoader === 'function') {
@@ -70,213 +67,119 @@ const App: React.FC = () => {
         }
       }
 
-      if (!settings.location || !settings.location.isManual) {
+      // If no location, try to get current position
+      if (!location) {
         navigator.geolocation.getCurrentPosition(
           (pos) => {
-            updateLocation({
-              lat: pos.coords.latitude,
-              lng: pos.coords.longitude,
-              name: "Current Location",
-              isManual: false
-            });
+            const newLoc = { lat: pos.coords.latitude, lng: pos.coords.longitude, name: "Current Location", isManual: false };
+            setLocation(newLoc);
+            localStorage.setItem('noor_location', JSON.stringify(newLoc));
           },
-          () => {
-            if (!settings.location) {
-              updateLocation({ lat: 21.4225, lng: 39.8262, name: "Mecca", isManual: false });
-            }
-          },
-          { timeout: 10000, enableHighAccuracy: false }
+          () => console.log("Location access denied"),
+          { timeout: 10000 }
         );
       }
     };
-
     initApp();
   }, []);
 
-  // Request WakeLock to keep screen on (mobile check)
+  // Save settings on change
   useEffect(() => {
-    const requestWakeLock = async () => {
-      if ('wakeLock' in navigator && isAudioUnlocked) {
-        try {
-          wakeLockRef.current = await (navigator as any).wakeLock.request('screen');
-        } catch (err) {
-          console.warn("WakeLock failed:", err);
-        }
-      }
-    };
-    requestWakeLock();
-    return () => {
-      if (wakeLockRef.current) wakeLockRef.current.release();
-    };
-  }, [isAudioUnlocked]);
+    localStorage.setItem('noor_settings', JSON.stringify(settings));
+  }, [settings]);
 
-  // Sync Prayer Times for the Adhan Monitor
-  useEffect(() => {
-    if (location && isDbReady) {
-      fetchPrayerTimes(location.lat, location.lng, settings.adhan.method, settings.adhan.school)
-        .then(data => setCurrentPrayerTimes(data.times))
-        .catch(err => console.error("Sync error", err));
-    }
-  }, [location, settings.adhan.method, settings.adhan.school, isDbReady]);
-
-  // AUTOMATIC ADHAN MONITOR
-  useEffect(() => {
-    if (!currentPrayerTimes || !isAudioUnlocked) return;
-
-    const checkAdhan = () => {
-      const now = new Date();
-      const currentH = now.getHours();
-      const currentM = now.getMinutes();
-      const currentTimeStr = `${currentH.toString().padStart(2, '0')}:${currentM.toString().padStart(2, '0')}`;
-      
-      const prayersToCheck = ['Fajr', 'Dhuhr', 'Asr', 'Maghrib', 'Isha'];
-      
-      for (const pName of prayersToCheck) {
-        const pTime = (currentPrayerTimes as any)[pName];
-        if (pTime === currentTimeStr && lastAdhanTriggered.current !== `${pName}_${currentTimeStr}`) {
-          if (settings.adhan.notifications[pName]) {
-            triggerAdhan(pName, currentTimeStr);
-          }
-        }
-      }
-    };
-
-    const triggerAdhan = async (pName: string, timeStr: string) => {
-      lastAdhanTriggered.current = `${pName}_${timeStr}`;
-      
-      if (navigator.vibrate) navigator.vibrate([500, 200, 500, 200, 500]);
-
-      if (adhanAudioRef.current) {
-        try {
-          const voice = ADHAN_OPTIONS.find(v => v.id === settings.voiceId) || ADHAN_OPTIONS[0];
-          // Try fetching from DB first
-          const blob = await db.getAdhanAudio(settings.adhan.voiceId);
-          adhanAudioRef.current.src = blob ? URL.createObjectURL(blob) : voice.url;
-          
-          await adhanAudioRef.current.play();
-        } catch (e) {
-          console.error("Adhan Playback Error", e);
-        }
-      }
-    };
-
-    const interval = setInterval(checkAdhan, 15000); // More frequent check for mobile
-    return () => clearInterval(interval);
-  }, [currentPrayerTimes, isAudioUnlocked, settings.adhan]);
-
-  const unlockAudio = async () => {
-    setIsAudioUnlocked(true);
+  // Handle mobile audio unlocking
+  const handleUnlockAudio = async () => {
+    if (!audioRef.current) return;
     
-    if ("Notification" in window) {
-      await Notification.requestPermission();
-    }
-
-    // Initialize both audio elements with user gesture
-    if (keeperAudioRef.current) {
-      keeperAudioRef.current.src = SILENT_AUDIO_URI;
-      keeperAudioRef.current.loop = true;
-      try {
-        await keeperAudioRef.current.play();
-      } catch (e) {
-        console.warn("Keeper loop failed (likely normal)", e);
+    try {
+      // Explicitly set src and load before playing to avoid "no supported sources"
+      audioRef.current.src = SILENT_AUDIO_URI;
+      audioRef.current.load();
+      await audioRef.current.play();
+      
+      // Warm up AudioContext for higher stability on iOS
+      const AudioContextClass = (window as any).AudioContext || (window as any).webkitAudioContext;
+      if (AudioContextClass) {
+        const ctx = new AudioContextClass();
+        if (ctx.state === 'suspended') await ctx.resume();
       }
+
+      setIsAudioUnlocked(true);
+    } catch (e) {
+      console.error("Audio unlock failed:", e);
+      // Even if it fails, we mark it as "unlocked" to let user in, 
+      // though Adhan might not play automatically until next interaction.
+      setIsAudioUnlocked(true);
     }
-
-    if (adhanAudioRef.current) {
-      adhanAudioRef.current.play().then(() => {
-        setTimeout(() => {
-          if (adhanAudioRef.current) adhanAudioRef.current.pause();
-        }, 100);
-      }).catch(() => {});
-    }
-  };
-
-  const updateLocation = (newLoc: LocationData) => {
-    const newSettings = { ...settings, location: newLoc };
-    setSettings(newSettings);
-    localStorage.setItem('noor_settings', JSON.stringify(newSettings));
-  };
-
-  const handleSaveSettings = (newSettings: AppSettings) => {
-    setSettings(newSettings);
-    localStorage.setItem('noor_settings', JSON.stringify(newSettings));
   };
 
   if (!isDbReady) return null;
 
   return (
-    <div className="flex flex-col min-h-screen bg-[#f2f6f4] max-w-lg mx-auto shadow-2xl relative overflow-hidden">
-      <audio ref={adhanAudioRef} className="hidden" crossOrigin="anonymous" />
-      <audio ref={keeperAudioRef} className="hidden" />
+    <div className="max-w-md mx-auto bg-slate-50 min-h-screen relative shadow-2xl flex flex-col font-['Plus_Jakarta_Sans'] select-none overflow-hidden">
+      <audio ref={audioRef} className="hidden" crossOrigin="anonymous" />
 
-      {/* Unlock Overlay */}
+      {/* Unlock Screen for Mobile Autoplay Compliance */}
       {!isAudioUnlocked && (
-        <div className="fixed inset-0 z-[2000] bg-[#064e3b] flex flex-col items-center justify-center p-10 text-center animate-in fade-in duration-300">
+        <div className="fixed inset-0 z-[2000] bg-[#064e3b] flex flex-col items-center justify-center p-10 text-center animate-in fade-in duration-500">
             <div className="absolute inset-0 opacity-[0.05]" style={{ backgroundImage: `url('https://www.transparenttextures.com/patterns/islamic-art.png')` }} />
             
-            <div className="relative z-10 w-24 h-24 bg-white/10 rounded-[2.5rem] flex items-center justify-center mb-8 border border-white/20 shadow-2xl">
-               <Volume2 size={40} className="text-emerald-400" />
+            <div className="relative z-10 mb-12">
+               <div className="w-24 h-24 bg-white/10 rounded-[2.5rem] flex items-center justify-center mx-auto border border-white/20 shadow-2xl animate-bounce">
+                  <Volume2 size={40} className="text-emerald-400" />
+               </div>
+               <h2 className="text-3xl font-black text-white tracking-tighter mt-8 mb-4">Noor Companion</h2>
+               <p className="text-emerald-100/60 text-sm font-medium leading-relaxed px-4">
+                  Tap to synchronize the Adhan engine and view the Arabic calendar for your location.
+               </p>
             </div>
             
-            <div className="relative z-10">
-              <h2 className="text-2xl font-black text-white tracking-tighter mb-4">Enable Automatic Adhan</h2>
-              <p className="text-emerald-100/60 text-sm font-medium leading-relaxed mb-10 px-4">
-                  Due to mobile privacy rules, we need your tap to activate the Adhan engine and keep the session active.
-              </p>
-              
-              <button 
-                onClick={unlockAudio}
-                className="w-full bg-emerald-500 text-emerald-950 py-6 px-12 rounded-[2.5rem] font-black text-sm uppercase tracking-[0.3em] shadow-2xl shadow-emerald-500/20 active:scale-95 transition-all hover:bg-emerald-400"
-              >
-                  Activate Noor
-              </button>
-              
-              <div className="mt-8 flex items-center justify-center gap-2 text-white/30 text-[9px] font-black uppercase tracking-widest">
-                 <ShieldAlert size={12} />
-                 <span>Keep app open for best results</span>
-              </div>
-            </div>
+            <button 
+              onClick={handleUnlockAudio}
+              className="relative z-10 w-full bg-white text-[#064e3b] py-6 px-12 rounded-[2.5rem] font-black text-sm uppercase tracking-[0.3em] shadow-2xl active:scale-95 transition-all flex items-center justify-center gap-3"
+            >
+                <Sparkles size={18} className="animate-pulse" />
+                Bismillah
+            </button>
+            
+            <p className="mt-8 text-white/30 text-[9px] font-black uppercase tracking-widest flex items-center gap-2">
+               <ShieldAlert size={12} />
+               Secure Audio Protocol
+            </p>
         </div>
       )}
 
-      <main className="flex-1 overflow-y-auto pb-28 no-scrollbar relative z-10">
-        {activeSection === AppSection.Home && <Home onNavigate={setActiveSection} location={location} adhanSettings={settings.adhan} />}
-        {activeSection === AppSection.Quran && <Quran settings={settings.quran} onUpdateSettings={(s) => handleSaveSettings({...settings, quran: s})} />}
+      <main className="flex-1 overflow-y-auto no-scrollbar pb-32">
+        {activeSection === AppSection.Home && <Home onNavigate={setActiveSection} location={location} adhanSettings={settings.adhan} isAudioReady={isAudioUnlocked} />}
+        {activeSection === AppSection.Quran && <Quran settings={settings.quran} onUpdateSettings={(s) => setSettings({ ...settings, quran: s })} />}
         {activeSection === AppSection.Tasbih && <Tasbih />}
-        {activeSection === AppSection.Adhan && <Adhan location={location} settings={settings.adhan} onUpdateSettings={(s) => handleSaveSettings({...settings, adhan: s})} onUpdateLocation={updateLocation} />}
+        {activeSection === AppSection.Adhan && <Adhan location={location} settings={settings.adhan} onUpdateSettings={(s) => setSettings({ ...settings, adhan: s })} onUpdateLocation={setLocation} />}
         {activeSection === AppSection.Calendar && <Calendar location={location} />}
         {activeSection === AppSection.Dua && <DuaView onRecite={() => setActiveSection(AppSection.Tasbih)} />}
         {activeSection === AppSection.Qiblah && <Qiblah location={location} />}
         {activeSection === AppSection.Explore && <Explore location={location} />}
-        {activeSection === AppSection.Settings && <SettingsView settings={settings} onSave={handleSaveSettings} />}
+        {activeSection === AppSection.Settings && <SettingsView settings={settings} onSave={setSettings} />}
       </main>
 
-      <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[100] w-[calc(100%-3rem)] max-w-sm pointer-events-none">
-        <nav className="glass-nav flex justify-between items-center h-20 w-full px-2 rounded-[2.5rem] shadow-2xl pointer-events-auto">
-            <NavItem icon={<HomeIcon size={20} />} label="Home" active={activeSection === AppSection.Home} onClick={() => setActiveSection(AppSection.Home)} />
-            <NavItem icon={<BookOpen size={20} />} label="Quran" active={activeSection === AppSection.Quran} onClick={() => setActiveSection(AppSection.Quran)} />
-            <NavItem icon={<CircleDot size={20} />} label="Dhikr" active={activeSection === AppSection.Tasbih} onClick={() => setActiveSection(AppSection.Tasbih)} />
-            <NavItem icon={<Heart size={20} />} label="Dua" active={activeSection === AppSection.Dua} onClick={() => setActiveSection(AppSection.Dua)} />
-            <NavItem icon={<SettingsIcon size={20} />} label="Settings" active={activeSection === AppSection.Settings} onClick={() => setActiveSection(AppSection.Settings)} />
-        </nav>
-      </div>
+      {/* Navigation */}
+      <nav className="fixed bottom-6 left-1/2 -translate-x-1/2 w-[92%] max-w-[360px] bg-emerald-950/90 backdrop-blur-2xl rounded-[2.5rem] p-2 flex items-center justify-around shadow-2xl border border-white/10 z-[100]">
+        <NavItem active={activeSection === AppSection.Home} onClick={() => setActiveSection(AppSection.Home)} icon={<HomeIcon size={20} />} label="Home" />
+        <NavItem active={activeSection === AppSection.Quran} onClick={() => setActiveSection(AppSection.Quran)} icon={<BookOpen size={20} />} label="Quran" />
+        <NavItem active={activeSection === AppSection.Explore} onClick={() => setActiveSection(AppSection.Explore)} icon={<Navigation size={20} />} label="Explore" />
+        <NavItem active={activeSection === AppSection.Settings} onClick={() => setActiveSection(AppSection.Settings)} icon={<SettingsIcon size={20} />} label="Config" />
+      </nav>
     </div>
   );
 };
 
-interface NavItemProps {
-  icon: React.ReactNode;
-  label: string;
-  active: boolean;
-  onClick: () => void;
-}
-
-const NavItem: React.FC<NavItemProps> = ({ icon, label, active, onClick }) => (
-  <button onClick={onClick} className={`flex flex-col items-center justify-center transition-all flex-1 h-full ${active ? 'text-emerald-800' : 'text-slate-400'}`}>
-    <div className={`p-2.5 rounded-2xl transition-all ${active ? 'bg-emerald-100/80 shadow-sm scale-110' : 'hover:bg-slate-50'}`}>
-      {icon}
-    </div>
-    <span className={`text-[8px] font-black uppercase tracking-widest mt-1 transition-all ${active ? 'opacity-100 scale-100' : 'opacity-0 scale-75 h-0 overflow-hidden'}`}>{label}</span>
+const NavItem: React.FC<{active: boolean, onClick: () => void, icon: any, label: string}> = ({ active, onClick, icon, label }) => (
+  <button 
+    onClick={onClick}
+    className={`flex flex-col items-center gap-1 p-3.5 rounded-[1.8rem] transition-all duration-500 ease-out active:scale-90 ${active ? 'bg-emerald-500 text-white shadow-xl shadow-emerald-500/20' : 'text-emerald-500/40 hover:text-emerald-400'}`}
+  >
+    {icon}
+    <span className={`text-[8px] font-black uppercase tracking-widest ${active ? 'block opacity-100 translate-y-0' : 'hidden opacity-0 translate-y-1'}`}>{label}</span>
   </button>
 );
 

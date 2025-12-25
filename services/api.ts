@@ -1,4 +1,3 @@
-
 import { Surah, Ayah, PrayerTimes } from '../types';
 import { db } from './db';
 import { GoogleGenAI, Type } from "@google/genai";
@@ -11,23 +10,13 @@ const PRAYER_API_BASE = 'https://api.aladhan.com/v1';
  */
 const safeParseJSON = (text: string) => {
   try {
+    // Standard cleanup in case of markdown formatting in raw text responses
     const cleaned = text.replace(/```json/g, '').replace(/```/g, '').trim();
     return JSON.parse(cleaned);
   } catch (e) {
     console.error("JSON Parse Error", e, text);
     throw new Error("Invalid AI response format from server.");
   }
-};
-
-/**
- * Robust GoogleGenAI initialization
- */
-const getAIClient = () => {
-  const apiKey = process.env.API_KEY;
-  if (!apiKey) {
-    throw new Error("API_KEY_MISSING");
-  }
-  return new GoogleGenAI({ apiKey });
 };
 
 export const fetchSurahs = async (): Promise<Surah[]> => {
@@ -65,7 +54,8 @@ export const fetchSurahAyahs = async (surahNumber: number, reciter: string = 'ar
 export const fetchLocationSuggestions = async (query: string): Promise<string[]> => {
   if (!query || query.length < 2) return [];
   try {
-    const ai = getAIClient();
+    // Direct initialization per guidelines
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     const response = await ai.models.generateContent({
       model: "gemini-3-flash-preview",
       contents: `List 5 real-world cities or locations matching "${query}". Include the country name for clarity. Return only as a JSON string array.`,
@@ -80,13 +70,17 @@ export const fetchLocationSuggestions = async (query: string): Promise<string[]>
     return safeParseJSON(response.text);
   } catch (e) {
     console.error("Suggestion error", e);
-    if (e.message === "API_KEY_MISSING") throw e;
+    // Rethrow specific errors to trigger key selection UI
+    if (e.message?.includes("API_KEY") || e.message?.includes("not found")) {
+      throw new Error("API_KEY_MISSING");
+    }
     return [];
   }
 };
 
 export const geocodeAddress = async (address: string): Promise<{ lat: number, lng: number, name: string }> => {
-  const ai = getAIClient();
+  // Direct initialization per guidelines
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   const response = await ai.models.generateContent({
     model: "gemini-3-flash-preview",
     contents: `Find the precise coordinates (latitude, longitude) and official full name for the location: "${address}". Return the data as a JSON object with properties 'lat', 'lng', and 'name'.`,

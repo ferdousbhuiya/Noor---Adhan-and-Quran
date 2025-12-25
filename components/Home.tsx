@@ -4,12 +4,13 @@ import { AppSection, PrayerTimes, LocationData, AdhanSettings } from '../types.t
 import { fetchPrayerTimes } from '../services/api.ts';
 import { db } from '../services/db.ts';
 import { ADHAN_OPTIONS } from '../constants.tsx';
-import { BookOpen, CircleDot, Clock, Heart, MapPin, ChevronRight, Sparkles, Compass, Calendar as CalendarIcon, Volume2, VolumeX, Loader2, BellRing, Map, Play } from 'lucide-react';
+import { BookOpen, CircleDot, Clock, Heart, MapPin, ChevronRight, Sparkles, Compass, Calendar as CalendarIcon, Volume2, VolumeX, Loader2, BellRing, Map, Play, ShieldCheck } from 'lucide-react';
 
 interface HomeProps {
   onNavigate: (section: AppSection) => void;
   location: LocationData | null;
   adhanSettings: AdhanSettings;
+  isAudioReady: boolean;
 }
 
 const formatTime12h = (time24: string) => {
@@ -20,7 +21,7 @@ const formatTime12h = (time24: string) => {
   return `${h12}:${minutes.toString().padStart(2, '0')} ${period}`;
 };
 
-const Home: React.FC<HomeProps> = ({ onNavigate, location, adhanSettings }) => {
+const Home: React.FC<HomeProps> = ({ onNavigate, location, adhanSettings, isAudioReady }) => {
   const [prayerTimes, setPrayerTimes] = useState<PrayerTimes | null>(null);
   const [hijriDate, setHijriDate] = useState<string>('');
   const [hijriArabic, setHijriArabic] = useState<string>('');
@@ -92,13 +93,13 @@ const Home: React.FC<HomeProps> = ({ onNavigate, location, adhanSettings }) => {
       manualAudioRef.current.pause();
       setIsManualPlaying(false);
     } else {
-      const blob = await db.getAdhanAudio(adhanSettings.voiceId);
-      manualAudioRef.current.src = blob ? URL.createObjectURL(blob) : selectedVoice.url;
       try {
+        const cachedBlob = await db.getAdhanAudio(adhanSettings.voiceId);
+        manualAudioRef.current.src = cachedBlob ? URL.createObjectURL(cachedBlob) : selectedVoice.url;
         await manualAudioRef.current.play();
         setIsManualPlaying(true);
       } catch (e) {
-        alert("Audio failed. Please ensure your device is not on silent mode.");
+        alert("Audio blocked. Ensure your device isn't on silent/mute mode.");
       }
     }
   };
@@ -116,9 +117,9 @@ const Home: React.FC<HomeProps> = ({ onNavigate, location, adhanSettings }) => {
 
       <div className="relative z-10 flex flex-col">
         <div className="pt-14 pb-16 px-6 flex flex-col items-center text-center">
-          <div className="flex items-center gap-3 mb-10 bg-white/10 backdrop-blur-xl px-5 py-2.5 rounded-full border border-white/20 shadow-xl">
-              <BellRing size={14} className="text-emerald-400 animate-pulse" />
-              <span className="text-[10px] font-black text-white uppercase tracking-[0.4em]">Adhan Monitor Active</span>
+          <div className={`flex items-center gap-3 mb-10 backdrop-blur-xl px-5 py-2.5 rounded-full border shadow-xl transition-all ${isAudioReady ? 'bg-emerald-400/10 border-emerald-400/20 text-emerald-400' : 'bg-white/10 border-white/20 text-white'}`}>
+              {isAudioReady ? <ShieldCheck size={14} /> : <BellRing size={14} className="animate-pulse" />}
+              <span className="text-[10px] font-black uppercase tracking-[0.4em]">{isAudioReady ? 'Engine Ready' : 'Monitoring'}</span>
           </div>
 
           <div className="mb-14 w-full px-4">
@@ -132,7 +133,7 @@ const Home: React.FC<HomeProps> = ({ onNavigate, location, adhanSettings }) => {
                  <div className="w-16 h-16 bg-white/10 rounded-3xl flex items-center justify-center text-white">
                     <Map size={32} />
                  </div>
-                 <button onClick={() => onNavigate(AppSection.Adhan)} className="bg-amber-500 text-emerald-950 px-8 py-4 rounded-2xl font-black text-xs uppercase tracking-widest shadow-2xl">
+                 <button onClick={() => onNavigate(AppSection.Adhan)} className="bg-amber-500 text-emerald-950 px-8 py-4 rounded-2xl font-black text-xs uppercase tracking-widest shadow-2xl active:scale-95">
                     Set Location
                  </button>
               </div>
@@ -146,7 +147,6 @@ const Home: React.FC<HomeProps> = ({ onNavigate, location, adhanSettings }) => {
                     <button 
                       onClick={toggleManualAdhan}
                       className={`p-4 rounded-full transition-all active:scale-90 flex items-center justify-center shadow-2xl ${isManualPlaying ? 'bg-amber-500 text-emerald-950 animate-pulse' : 'bg-white/10 text-white hover:bg-white/20'}`}
-                      title="Test Audio"
                     >
                       {isManualPlaying ? <VolumeX size={24} /> : <Volume2 size={24} />}
                     </button>
@@ -199,26 +199,6 @@ const Home: React.FC<HomeProps> = ({ onNavigate, location, adhanSettings }) => {
             <ActionItem icon={<Clock size={24} />} label="Adhan" onClick={() => onNavigate(AppSection.Adhan)} color="bg-emerald-500" />
             <ActionItem icon={<CalendarIcon size={24} />} label="Calendar" onClick={() => onNavigate(AppSection.Calendar)} color="bg-amber-600" />
             <ActionItem icon={<Compass size={24} />} label="Qiblah" onClick={() => onNavigate(AppSection.Qiblah)} color="bg-emerald-400" />
-          </div>
-          
-          <div className="bg-emerald-950 p-10 rounded-[4rem] text-white shadow-2xl relative overflow-hidden group border border-white/5">
-            <div className="relative z-10">
-              <div className="flex justify-between items-center mb-8">
-                 <span className="text-[10px] font-black uppercase tracking-[0.4em] text-emerald-400/80">Verse of the Day</span>
-                 <BookOpen size={16} className="text-white/20" />
-              </div>
-              <p className="arabic-text text-3xl text-right mb-8 leading-[2.2] font-bold text-emerald-50">إِنَّ مَعَ الْعُسْرِ يُسْرًا</p>
-              <div className="space-y-8">
-                <p className="text-sm text-emerald-100/70 italic leading-relaxed font-medium bg-black/20 p-6 rounded-[2.5rem] border border-white/5">"For indeed, with hardship [will be] ease."</p>
-                <div className="flex items-center justify-between pt-2">
-                  <div className="flex flex-col text-left">
-                    <span className="text-[10px] font-black text-emerald-500 uppercase tracking-widest">Surah Ash-Sharh</span>
-                    <span className="text-[9px] text-white/30 font-bold uppercase tracking-widest">94:6</span>
-                  </div>
-                  <button onClick={() => onNavigate(AppSection.Quran)} className="bg-white text-emerald-950 px-8 py-3.5 rounded-full font-black text-[10px] uppercase tracking-widest shadow-2xl active:scale-95">Read Surah</button>
-                </div>
-              </div>
-            </div>
           </div>
         </div>
       </div>
