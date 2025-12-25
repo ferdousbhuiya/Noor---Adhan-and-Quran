@@ -35,11 +35,10 @@ const DEFAULT_SETTINGS: AppSettings = {
 };
 
 /**
- * Standard silent MP3. 
- * MP3 data URIs are widely supported and less prone to "no supported source" errors 
- * in restricted mobile environments compared to RAW WAV.
+ * High-compatibility 1-second silent WAV base64.
+ * WAV is uncompressed and more reliable than MP3 for short Data URIs across mobile browsers.
  */
-const SILENT_AUDIO_URI = "data:audio/mpeg;base64,SUQzBAAAAAAAI1RTU0UAAAAPAAADTGF2ZWY1OC43Ni4xMDAAAAAAAAAAAAAAAP/NMQAAAAAADAAAAGYAAAAAAA//zTEAAAAAAAIAAABmAAAAAAD/zTEAAAAAAAAMAAABmAAAAAAD/zTEAAAAAAAIAAABmAAAAAAD/zTEAAAAAAAAMAAABmAAAAAAD/zTEAAAAAAAIAAABmAAAAAAD/zTEAAAAAAAAMAAABmAAAAAAD/zTEAAAAAAAIAAABmAAAAAAD/zTEAAAAAAAAMAAABmAAAAAAD/zTEAAAAAAAIAAABmAAAAAAD/zTEAAAAAAAAMAAABmAAAAAAD/zTEAAAAAAAIAAABmAAAAAAD/zTE=";
+const SILENT_AUDIO_URI = "data:audio/wav;base64,UklGRjIAAABXQVZFVG10IBAAAAABAAEAIlYAAClVGAAAgAAAAAABAAgAZGF0YRAAAACAgICAgICAgICAgICAgICA=";
 
 const App: React.FC = () => {
   const [activeSection, setActiveSection] = useState<AppSection>(AppSection.Home);
@@ -54,6 +53,8 @@ const App: React.FC = () => {
     const saved = localStorage.getItem('noor_location');
     return saved ? JSON.parse(saved) : null;
   });
+
+  const unlockAudioRef = useRef<HTMLAudioElement | null>(null);
 
   // Initialize DB and hide loader
   useEffect(() => {
@@ -92,36 +93,37 @@ const App: React.FC = () => {
 
   /**
    * Unlocks audio for the browser by playing a silent sound on user interaction.
-   * Uses a fresh Audio instance to avoid potential state issues with reused refs.
+   * Mobile browsers (iOS/Android) require a user gesture to authorize the audio engine.
    */
   const handleUnlockAudio = async () => {
+    // Proceed to app immediately to ensure smooth UX
+    setIsAudioUnlocked(true);
+    
+    const audio = unlockAudioRef.current;
+    if (!audio) return;
+    
     try {
-      // 1. Unlock Web Audio Context (for Gemini Live / advanced audio)
+      // 1. Warm up the AudioContext (Critical for iOS Safari)
       const AudioContextClass = (window as any).AudioContext || (window as any).webkitAudioContext;
       if (AudioContextClass) {
         const ctx = new AudioContextClass();
-        if (ctx.state === 'suspended') await ctx.resume();
+        if (ctx.state === 'suspended') {
+          await ctx.resume();
+        }
       }
 
-      // 2. Unlock HTML5 Audio (for Adhan and Quran playback)
-      const unlockAudio = new Audio();
-      unlockAudio.src = SILENT_AUDIO_URI;
-      unlockAudio.preload = "auto";
+      // 2. Play the silent WAV from the DOM element
+      audio.src = SILENT_AUDIO_URI;
+      audio.load();
       
-      // We call load explicitly to ensure the browser processes the Data URI
-      unlockAudio.load();
-      
-      const playPromise = unlockAudio.play();
+      const playPromise = audio.play();
       if (playPromise !== undefined) {
         await playPromise;
       }
-
-      setIsAudioUnlocked(true);
     } catch (e) {
-      console.error("Audio unlock failed:", e);
-      // Fallback: Continue into the app anyway so the user isn't stuck.
-      // Audio may be restricted but the core app remains functional.
-      setIsAudioUnlocked(true);
+      // We log but don't stop the app, as some browsers might block silent play 
+      // but still authorize the context for later real audio.
+      console.warn("Audio unlock silent play skipped:", e);
     }
   };
 
@@ -130,6 +132,17 @@ const App: React.FC = () => {
   return (
     <div className="max-w-md mx-auto bg-slate-50 min-h-screen relative shadow-2xl flex flex-col font-['Plus_Jakarta_Sans'] select-none overflow-hidden">
       
+      {/* 
+          Hidden audio element used for unlocking. 
+          We keep it in the DOM with opacity 0 to ensure it's registered for user interaction.
+      */}
+      <audio 
+        ref={unlockAudioRef} 
+        style={{ position: 'absolute', opacity: 0, pointerEvents: 'none' }} 
+        preload="auto"
+        crossOrigin="anonymous"
+      />
+
       {/* Unlock Screen for Mobile Autoplay Compliance */}
       {!isAudioUnlocked && (
         <div className="fixed inset-0 z-[2000] bg-[#064e3b] flex flex-col items-center justify-center p-10 text-center animate-in fade-in duration-500">
