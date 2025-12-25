@@ -234,7 +234,6 @@ const Quran: React.FC<QuranProps> = ({ settings, onUpdateSettings }) => {
                 return (
                   <div 
                     key={`${selectedSurah.number}_${ayah.numberInSurah}`} 
-                    // Fixed ref assignment to return void instead of the element to resolve TypeScript error.
                     ref={el => { ayahRefs.current[ayah.numberInSurah] = el; }}
                     className={`p-7 rounded-[3rem] transition-all duration-500 border ${isPlaying ? 'bg-emerald-50 border-emerald-300 shadow-2xl scale-[1.02] ring-4 ring-emerald-500/10' : 'bg-white border-white/50 shadow-premium'} ${bookmarked ? 'border-amber-200' : ''}`}
                   >
@@ -314,7 +313,7 @@ const Quran: React.FC<QuranProps> = ({ settings, onUpdateSettings }) => {
   }
 
   return (
-    <div className="p-6 bg-[#f2f6f4] min-h-screen pb-32">
+    <div className="p-4 sm:p-6 bg-[#f2f6f4] min-h-screen pb-32">
       <div className="flex justify-between items-center mb-10 px-2">
          <h1 className="text-3xl font-black text-slate-800 tracking-tighter">Holy Quran</h1>
          <button onClick={() => setShowBookmarks(true)} className="p-4 bg-white text-emerald-900 rounded-[1.8rem] shadow-premium relative border border-white/50 group active:scale-90 transition-all">
@@ -327,24 +326,24 @@ const Quran: React.FC<QuranProps> = ({ settings, onUpdateSettings }) => {
         {surahs.map((surah) => {
           const surahBookmarks = bookmarks.filter(b => b.surahNumber === surah.number).length;
           return (
-            <button key={surah.number} onClick={() => setSelectedSurah(surah)} className="w-full bg-white p-6 rounded-[2.8rem] border border-white/50 shadow-premium flex items-center gap-5 text-left active:scale-[0.97] transition-all group hover:border-emerald-100">
-              <div className={`w-14 h-14 rounded-3xl flex items-center justify-center font-black text-lg shadow-inner transition-all ${surah.isDownloaded ? 'bg-emerald-900 text-white' : 'bg-emerald-50 text-emerald-800'}`}>
+            <button key={surah.number} onClick={() => setSelectedSurah(surah)} className="w-full bg-white p-4 sm:p-6 rounded-[2.8rem] border border-white/50 shadow-premium flex items-center gap-3 sm:gap-5 text-left active:scale-[0.97] transition-all group hover:border-emerald-100 overflow-hidden">
+              <div className={`w-12 h-12 sm:w-14 sm:h-14 shrink-0 rounded-[1.5rem] sm:rounded-3xl flex items-center justify-center font-black text-base sm:text-lg shadow-inner transition-all ${surah.isDownloaded ? 'bg-emerald-900 text-white' : 'bg-emerald-50 text-emerald-800'}`}>
                 {surah.number}
               </div>
               <div className="flex-1 min-w-0">
-                <h3 className="font-black text-slate-800 tracking-tight text-lg truncate mb-1">{surah.englishName}</h3>
-                <p className="text-[10px] text-slate-400 font-black uppercase tracking-widest truncate">{surah.englishNameTranslation}</p>
+                <h3 className="font-black text-slate-800 tracking-tight text-base sm:text-lg truncate mb-0.5 sm:mb-1">{surah.englishName}</h3>
+                <p className="text-[9px] sm:text-[10px] text-slate-500 font-black uppercase tracking-widest truncate">{surah.englishNameTranslation}</p>
               </div>
-              <div className="flex items-center gap-4 shrink-0">
-                <div className="text-right">
-                  <p className="arabic-text font-black text-2xl text-emerald-950 leading-none mb-1">{surah.name}</p>
-                  {surahBookmarks > 0 && <span className="text-[8px] bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full font-black uppercase tracking-tighter shadow-sm">{surahBookmarks} SAVED</span>}
+              <div className="flex items-center gap-3 sm:gap-4 shrink-0">
+                <div className="text-right flex flex-col items-end">
+                  <p className="arabic-text font-black text-xl sm:text-2xl text-emerald-950 leading-none mb-1">{surah.name}</p>
+                  {surahBookmarks > 0 && <span className="text-[7px] sm:text-[8px] bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full font-black uppercase tracking-tighter shadow-sm whitespace-nowrap">{surahBookmarks} SAVED</span>}
                 </div>
                 <button 
                   onClick={(e) => handleDownload(e, surah)}
                   className={`p-2 rounded-xl transition-all ${surah.isDownloaded ? 'text-emerald-600 bg-emerald-50' : 'text-slate-300 hover:text-emerald-500 bg-slate-50'}`}
                 >
-                  {downloading === surah.number ? <Loader2 size={18} className="animate-spin" /> : surah.isDownloaded ? <CheckCircle size={18} /> : <Download size={18} />}
+                  {downloading === surah.number ? <Loader2 size={16} className="animate-spin" /> : surah.isDownloaded ? <CheckCircle size={16} /> : <Download size={16} />}
                 </button>
               </div>
             </button>

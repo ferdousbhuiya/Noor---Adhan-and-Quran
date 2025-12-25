@@ -2,7 +2,7 @@
 import React, { useState } from 'react';
 import { AppSettings, QuranFont } from '../types';
 import { TRANSLATIONS, ARABIC_FONTS, ADHAN_OPTIONS, PRAYER_METHODS, PRAYER_SCHOOLS, RECITERS } from '../constants';
-import { Save, Book, Volume2, Target, Compass, Bell, Type, User, Info, Smartphone, RefreshCw, Languages, PlayCircle } from 'lucide-react';
+import { Save, Book, Volume2, Target, Compass, Bell, Type, User, Info, Smartphone, RefreshCw, Languages, PlayCircle, Calculator } from 'lucide-react';
 
 interface SettingsProps {
   settings: AppSettings;
@@ -101,10 +101,10 @@ const SettingsView: React.FC<SettingsProps> = ({ settings, onSave }) => {
           </div>
         </section>
 
-        {/* Prayer Settings */}
+        {/* Prayer & Precision Settings */}
         <section>
           <h2 className="flex items-center gap-3 text-[10px] font-black text-slate-400 uppercase tracking-[0.3em] mb-5 ml-4">
-            <Bell size={14} /> Salat & Notifications
+            <Calculator size={14} /> Calculation & Precision
           </h2>
           <div className="bg-white p-8 rounded-[3.5rem] border border-white shadow-premium space-y-8">
             <div className="space-y-4">
@@ -123,15 +123,53 @@ const SettingsView: React.FC<SettingsProps> = ({ settings, onSave }) => {
               </div>
             </div>
 
-            <div className="pt-6 border-t border-slate-50">
-              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-4 ml-2">Calculation Method</label>
-              <select 
-                value={localSettings.adhan.method}
-                onChange={(e) => setLocalSettings({...localSettings, adhan: {...localSettings.adhan, method: parseInt(e.target.value)}})}
-                className="w-full bg-slate-50 border-none rounded-2xl p-5 text-sm font-bold outline-none"
-              >
-                {PRAYER_METHODS.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
-              </select>
+            <div className="pt-6 border-t border-slate-50 space-y-6">
+              <div>
+                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-3 ml-2">Method</label>
+                <select 
+                  value={localSettings.adhan.method}
+                  onChange={(e) => setLocalSettings({...localSettings, adhan: {...localSettings.adhan, method: parseInt(e.target.value)}})}
+                  className="w-full bg-slate-50 border-none rounded-2xl p-5 text-sm font-bold outline-none"
+                >
+                  {PRAYER_METHODS.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
+                </select>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-3 ml-2">Fajr Angle</label>
+                    <input 
+                      type="number" step="0.1"
+                      value={localSettings.adhan.fajrAngle || 18}
+                      onChange={(e) => setLocalSettings({...localSettings, adhan: {...localSettings.adhan, fajrAngle: parseFloat(e.target.value)}})}
+                      className="w-full bg-slate-50 border-none rounded-2xl p-5 text-sm font-black outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-3 ml-2">Isha Angle</label>
+                    <input 
+                      type="number" step="0.1"
+                      value={localSettings.adhan.ishaAngle || 18}
+                      onChange={(e) => setLocalSettings({...localSettings, adhan: {...localSettings.adhan, ishaAngle: parseFloat(e.target.value)}})}
+                      className="w-full bg-slate-50 border-none rounded-2xl p-5 text-sm font-black outline-none"
+                    />
+                  </div>
+              </div>
+
+              <div>
+                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-3 ml-2">Asr Juristic School</label>
+                <div className="flex bg-slate-50 p-1 rounded-2xl">
+                   {PRAYER_SCHOOLS.map(s => (
+                     <button 
+                        key={s.id}
+                        onClick={() => setLocalSettings({...localSettings, adhan: {...localSettings.adhan, school: s.id}})}
+                        className={`flex-1 py-3.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${localSettings.adhan.school === s.id ? 'bg-white text-emerald-900 shadow-sm' : 'text-slate-400'}`}
+                     >
+                       {s.name}
+                     </button>
+                   ))}
+                </div>
+              </div>
             </div>
           </div>
         </section>
@@ -142,19 +180,9 @@ const SettingsView: React.FC<SettingsProps> = ({ settings, onSave }) => {
             <Smartphone size={14} /> Interaction
           </h2>
           <div className="bg-white p-8 rounded-[3.5rem] border border-white shadow-premium">
-            <div className="flex items-center justify-between">
-              <div>
-                 <p className="font-black text-slate-800 text-sm tracking-tight">Vibration Feedback</p>
-                 <p className="text-[9px] text-slate-400 font-bold uppercase tracking-widest">Haptics on Dhikr completion</p>
-              </div>
-              <div className="w-12 h-6 bg-emerald-100 rounded-full relative p-1 cursor-pointer">
-                 <div className="w-4 h-4 bg-emerald-600 rounded-full" />
-              </div>
-            </div>
-            
             <button 
               onClick={() => window.location.reload()}
-              className="w-full mt-8 p-5 bg-slate-50 rounded-2xl flex items-center justify-center gap-3 active:scale-95 transition-all group"
+              className="w-full p-5 bg-slate-50 rounded-2xl flex items-center justify-center gap-3 active:scale-95 transition-all group"
             >
               <RefreshCw size={16} className="text-slate-400 group-hover:rotate-180 transition-transform duration-500" />
               <span className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">Sync Local Database</span>

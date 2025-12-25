@@ -4,7 +4,7 @@ import { AppSection, PrayerTimes, LocationData, AdhanSettings } from '../types.t
 import { fetchPrayerTimes } from '../services/api.ts';
 import { db } from '../services/db.ts';
 import { ADHAN_OPTIONS } from '../constants.tsx';
-import { BookOpen, CircleDot, Clock, Heart, MapPin, ChevronRight, Sparkles, Compass, Calendar as CalendarIcon, Volume2, VolumeX, Loader2 } from 'lucide-react';
+import { BookOpen, CircleDot, Clock, Heart, MapPin, ChevronRight, Sparkles, Compass, Calendar as CalendarIcon, Volume2, VolumeX, Loader2, BellRing, Map } from 'lucide-react';
 
 interface HomeProps {
   onNavigate: (section: AppSection) => void;
@@ -26,16 +26,13 @@ const Home: React.FC<HomeProps> = ({ onNavigate, location, adhanSettings }) => {
   const [hijriArabic, setHijriArabic] = useState<string>('');
   const [nextPrayer, setNextPrayer] = useState<{name: string, time: string} | null>(null);
   const [remainingTime, setRemainingTime] = useState<string>('');
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   
-  const [isAdhanPlaying, setIsAdhanPlaying] = useState(false);
-  const [isAudioLoading, setIsAudioLoading] = useState(false);
-  
-  const audioRef = useRef<HTMLAudioElement | null>(null);
-  const objectUrlRef = useRef<string | null>(null);
+  const [isManualPlaying, setIsManualPlaying] = useState(false);
+  const manualAudioRef = useRef<HTMLAudioElement | null>(null);
 
-  const selectedVoiceName = useMemo(() => {
-    return ADHAN_OPTIONS.find(o => o.id === adhanSettings.voiceId)?.name || 'Standard';
+  const selectedVoice = useMemo(() => {
+    return ADHAN_OPTIONS.find(o => o.id === adhanSettings.voiceId) || ADHAN_OPTIONS[0];
   }, [adhanSettings.voiceId]);
 
   useEffect(() => {
@@ -89,39 +86,16 @@ const Home: React.FC<HomeProps> = ({ onNavigate, location, adhanSettings }) => {
     setNextPrayer(prayers[0]);
   };
 
-  const toggleAdhan = async () => {
-    if (!audioRef.current) return;
-
-    if (isAdhanPlaying) {
-      audioRef.current.pause();
-      setIsAdhanPlaying(false);
-      return;
-    }
-
-    if (isAudioLoading) return;
-    setIsAudioLoading(true);
-
-    try {
-      const audioBlob = await db.getAdhanAudio(adhanSettings.voiceId);
-      if (!audioBlob) {
-        setIsAudioLoading(false);
-        if (confirm("Voice not found offline. Download now?")) onNavigate(AppSection.Adhan);
-        return;
-      }
-
-      if (objectUrlRef.current) URL.revokeObjectURL(objectUrlRef.current);
-      const url = URL.createObjectURL(audioBlob);
-      objectUrlRef.current = url;
-
-      audioRef.current.src = url;
-      audioRef.current.load();
-      await audioRef.current.play();
-      setIsAdhanPlaying(true);
-    } catch (e) {
-      console.error("Adhan error", e);
-      alert("Audio playback failed. Please check your voice settings.");
-    } finally {
-      setIsAudioLoading(false);
+  const toggleManualAdhan = async () => {
+    if (!manualAudioRef.current) return;
+    if (isManualPlaying) {
+      manualAudioRef.current.pause();
+      setIsManualPlaying(false);
+    } else {
+      const blob = await db.getAdhanAudio(adhanSettings.voiceId);
+      manualAudioRef.current.src = blob ? URL.createObjectURL(blob) : selectedVoice.url;
+      manualAudioRef.current.play();
+      setIsManualPlaying(true);
     }
   };
 
@@ -129,11 +103,7 @@ const Home: React.FC<HomeProps> = ({ onNavigate, location, adhanSettings }) => {
 
   return (
     <div className="flex flex-col min-h-screen bg-[#f2f6f4] relative">
-      <audio 
-        ref={audioRef} 
-        onEnded={() => setIsAdhanPlaying(false)} 
-        className="hidden"
-      />
+      <audio ref={manualAudioRef} onEnded={() => setIsManualPlaying(false)} className="hidden" />
 
       <div className="fixed inset-0 z-0">
          <div className="absolute inset-0 bg-gradient-to-b from-[#064e3b] via-[#065f46] to-[#f2f6f4]" />
@@ -143,36 +113,53 @@ const Home: React.FC<HomeProps> = ({ onNavigate, location, adhanSettings }) => {
       <div className="relative z-10 flex flex-col">
         <div className="pt-14 pb-16 px-6 flex flex-col items-center text-center">
           <div className="flex items-center gap-3 mb-10 bg-white/10 backdrop-blur-xl px-5 py-2.5 rounded-full border border-white/20 shadow-xl">
-              <Sparkles size={14} className="text-amber-400 animate-pulse" />
-              <span className="text-[10px] font-black text-white uppercase tracking-[0.4em]">Bismillah</span>
+              <BellRing size={14} className="text-emerald-400 animate-pulse" />
+              <span className="text-[10px] font-black text-white uppercase tracking-[0.4em]">Adhan Active</span>
           </div>
 
           <div className="mb-14 w-full px-4">
-            <p className="text-[11px] font-black uppercase tracking-[0.5em] text-emerald-400 mb-5">{nextPrayer?.name || 'Syncing'} Adhan</p>
-            <div className="flex items-center justify-center gap-4">
-                <h1 className="text-[6rem] sm:text-[7rem] font-black tracking-tighter text-white leading-none drop-shadow-2xl">
-                {nextPrayer ? formatTime12h(nextPrayer.time).split(' ')[0] : '--:--'}
-                </h1>
-                <button 
-                  onClick={toggleAdhan}
-                  disabled={isAudioLoading}
-                  className={`p-4 rounded-full transition-all active:scale-90 flex items-center justify-center shadow-2xl ${isAdhanPlaying ? 'bg-amber-500 text-emerald-950 animate-pulse' : 'bg-white/10 text-white hover:bg-white/20'}`}
-                >
-                  {isAudioLoading ? <Loader2 size={24} className="animate-spin text-white" /> : isAdhanPlaying ? <VolumeX size={24} /> : <Volume2 size={24} />}
-                </button>
-            </div>
-            <div className="mt-8 flex flex-col items-center gap-4">
-               <div className="px-8 py-3.5 rounded-full bg-amber-500 text-emerald-950 shadow-2xl flex items-center gap-3 border border-amber-400/50 scale-105">
-                  <span className="text-xs font-black tracking-widest uppercase">{remainingTime || '...'}</span>
-               </div>
-               <div className="flex flex-col items-center gap-1 opacity-80">
-                  <div className="flex items-center gap-2">
-                    <MapPin size={12} className="text-white fill-emerald-500" />
-                    <span className="text-[10px] font-black text-white uppercase tracking-[0.3em]">{location?.name || 'Searching...'}</span>
+            {loading ? (
+              <div className="flex flex-col items-center gap-4 py-20">
+                <Loader2 className="animate-spin text-white/50" size={40} />
+                <p className="text-[10px] font-black text-white/40 uppercase tracking-widest">Calculating Times...</p>
+              </div>
+            ) : !location ? (
+              <div className="flex flex-col items-center gap-6 py-10">
+                 <div className="w-16 h-16 bg-white/10 rounded-3xl flex items-center justify-center text-white">
+                    <Map size={32} />
+                 </div>
+                 <button onClick={() => onNavigate(AppSection.Adhan)} className="bg-amber-500 text-emerald-950 px-8 py-4 rounded-2xl font-black text-xs uppercase tracking-widest shadow-2xl">
+                    Set Location
+                 </button>
+              </div>
+            ) : (
+              <>
+                <p className="text-[11px] font-black uppercase tracking-[0.5em] text-emerald-400 mb-5">{nextPrayer?.name || 'Syncing'} Adhan</p>
+                <div className="flex items-center justify-center gap-4">
+                    <h1 className="text-[6rem] sm:text-[7rem] font-black tracking-tighter text-white leading-none drop-shadow-2xl">
+                    {nextPrayer ? formatTime12h(nextPrayer.time).split(' ')[0] : '--:--'}
+                    </h1>
+                    <button 
+                      onClick={toggleManualAdhan}
+                      className={`p-4 rounded-full transition-all active:scale-90 flex items-center justify-center shadow-2xl ${isManualPlaying ? 'bg-amber-500 text-emerald-950 animate-pulse' : 'bg-white/10 text-white hover:bg-white/20'}`}
+                    >
+                      {isManualPlaying ? <VolumeX size={24} /> : <Volume2 size={24} />}
+                    </button>
+                </div>
+                <div className="mt-8 flex flex-col items-center gap-4">
+                  <div className="px-8 py-3.5 rounded-full bg-amber-500 text-emerald-950 shadow-2xl flex items-center gap-3 border border-amber-400/50 scale-105">
+                      <span className="text-xs font-black tracking-widest uppercase">{remainingTime || '...'}</span>
                   </div>
-                  <p className="text-[8px] font-black text-emerald-300/60 uppercase tracking-widest mt-1">Voice: {selectedVoiceName}</p>
-               </div>
-            </div>
+                  <div className="flex flex-col items-center gap-1 opacity-80">
+                      <div className="flex items-center gap-2">
+                        <MapPin size={12} className="text-white fill-emerald-500" />
+                        <span className="text-[10px] font-black text-white uppercase tracking-[0.3em]">{location?.name || 'Searching...'}</span>
+                      </div>
+                      <p className="text-[8px] font-black text-emerald-300/60 uppercase tracking-widest mt-1">Voice: {selectedVoice.name}</p>
+                  </div>
+                </div>
+              </>
+            )}
           </div>
         </div>
 

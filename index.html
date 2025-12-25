@@ -100,14 +100,28 @@
         }
     </style>
     <script>
-        window.process = { env: { API_KEY: "" } };
+        window.process = window.process || { env: {} };
+        
         window.addEventListener('error', function(e) {
+            console.error("Runtime Error:", e);
             const display = document.getElementById('error-display');
             if (display) {
                 display.style.display = 'block';
-                display.innerText = 'App Load Error:\n' + e.message + '\n\nSource: ' + e.filename + ':' + e.lineno;
+                display.innerText = 'App Load Error:\n' + e.message;
             }
         });
+
+        // Global function to hide the loader from the React side
+        window.hideAppLoader = () => {
+            const loader = document.getElementById('app-loader');
+            if (loader) {
+                loader.style.opacity = '0';
+                setTimeout(() => loader.remove(), 500);
+            }
+        };
+
+        // Safety timeout to remove loader if React hangs or environment blocks initial mount
+        setTimeout(window.hideAppLoader, 6000);
     </script>
 </head>
 <body class="overflow-x-hidden antialiased">

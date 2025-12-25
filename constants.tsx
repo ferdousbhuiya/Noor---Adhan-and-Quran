@@ -20,15 +20,36 @@ export const ADHAN_STYLES = [
 ];
 
 export const ADHAN_OPTIONS = [
-  { id: 'makkah', name: 'Makkah Al-Mukarramah', url: 'https://cdn.jsdelivr.net/gh/Ayman-Ibrahim/Adhan-MP3@main/Makkah.mp3' },
-  { id: 'madinah', name: 'Madinah Al-Munawwarah', url: 'https://cdn.jsdelivr.net/gh/Ayman-Ibrahim/Adhan-MP3@main/Madinah.mp3' },
-  { id: 'egypt', name: 'Abdul Basit (Egypt)', url: 'https://cdn.jsdelivr.net/gh/Ayman-Ibrahim/Adhan-MP3@main/Abdul-Basit.mp3' },
-  { id: 'turkey', name: 'Istanbul (Turkey)', url: 'https://cdn.jsdelivr.net/gh/Ayman-Ibrahim/Adhan-MP3@main/Turkey.mp3' },
-  { id: 'alaqsa', name: 'Al-Aqsa (Jerusalem)', url: 'https://cdn.jsdelivr.net/gh/Ayman-Ibrahim/Adhan-MP3@main/Al-Aqsa.mp3' },
-  { id: 'bosnia', name: 'Sarajevo (Bosnia)', url: 'https://cdn.jsdelivr.net/gh/Ayman-Ibrahim/Adhan-MP3@main/Bosnia.mp3' },
-  { id: 'uae', name: 'Sheikh Zayed (UAE)', url: 'https://cdn.jsdelivr.net/gh/Ayman-Ibrahim/Adhan-MP3@main/UAE.mp3' },
-  { id: 'qatar', name: 'Doha (Qatar)', url: 'https://cdn.jsdelivr.net/gh/Ayman-Ibrahim/Adhan-MP3@main/Qatar.mp3' },
-  { id: 'kuwait', name: 'Mishary (Kuwait)', url: 'https://cdn.jsdelivr.net/gh/Ayman-Ibrahim/Adhan-MP3@main/Kuwait.mp3' }
+  { 
+    id: 'makkah', 
+    name: 'Makkah Adhan', 
+    muezzin: 'Sheikh Ali Mullah',
+    url: 'https://www.islamcan.com/audio/adhan/azan1.mp3'
+  },
+  { 
+    id: 'madinah', 
+    name: 'Madinah Adhan', 
+    muezzin: 'Sheikh Essam Bukhari',
+    url: 'https://www.islamcan.com/audio/adhan/azan2.mp3'
+  },
+  { 
+    id: 'mishary', 
+    name: 'Mishary Rashid', 
+    muezzin: 'Sheikh Mishary Rashid Alafasy',
+    url: 'https://www.islamcan.com/audio/adhan/azan3.mp3'
+  },
+  { 
+    id: 'alaqsa', 
+    name: 'Al-Aqsa Adhan', 
+    muezzin: 'Al-Aqsa Mosque',
+    url: 'https://www.islamcan.com/audio/adhan/azan4.mp3'
+  },
+  { 
+    id: 'egypt', 
+    name: 'Egyptian Adhan', 
+    muezzin: 'Egyptian Style',
+    url: 'https://www.islamcan.com/audio/adhan/azan5.mp3'
+  }
 ];
 
 export const ARABIC_FONTS: { id: string, name: string }[] = [
