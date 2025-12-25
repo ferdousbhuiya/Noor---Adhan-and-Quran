@@ -34,8 +34,12 @@ const DEFAULT_SETTINGS: AppSettings = {
   tasbihTarget: 33
 };
 
-// Valid 1-second silent WAV to unlock audio on mobile
-const SILENT_AUDIO_URI = "data:audio/wav;base64,UklGRjIAAABXQVZFVG10IBAAAAABAAEAIlYAAClVGAAAgAAAAAABAAgAZGF0YRAAAACAgICAgICAgICAgICAgICA";
+/**
+ * Standard silent MP3. 
+ * MP3 data URIs are widely supported and less prone to "no supported source" errors 
+ * in restricted mobile environments compared to RAW WAV.
+ */
+const SILENT_AUDIO_URI = "data:audio/mpeg;base64,SUQzBAAAAAAAI1RTU0UAAAAPAAADTGF2ZWY1OC43Ni4xMDAAAAAAAAAAAAAAAP/NMQAAAAAADAAAAGYAAAAAAA//zTEAAAAAAAIAAABmAAAAAAD/zTEAAAAAAAAMAAABmAAAAAAD/zTEAAAAAAAIAAABmAAAAAAD/zTEAAAAAAAAMAAABmAAAAAAD/zTEAAAAAAAIAAABmAAAAAAD/zTEAAAAAAAAMAAABmAAAAAAD/zTEAAAAAAAIAAABmAAAAAAD/zTEAAAAAAAAMAAABmAAAAAAD/zTEAAAAAAAIAAABmAAAAAAD/zTEAAAAAAAAMAAABmAAAAAAD/zTEAAAAAAAIAAABmAAAAAAD/zTE=";
 
 const App: React.FC = () => {
   const [activeSection, setActiveSection] = useState<AppSection>(AppSection.Home);
@@ -50,8 +54,6 @@ const App: React.FC = () => {
     const saved = localStorage.getItem('noor_location');
     return saved ? JSON.parse(saved) : null;
   });
-
-  const audioRef = useRef<HTMLAudioElement | null>(null);
 
   // Initialize DB and hide loader
   useEffect(() => {
@@ -88,28 +90,37 @@ const App: React.FC = () => {
     localStorage.setItem('noor_settings', JSON.stringify(settings));
   }, [settings]);
 
-  // Handle mobile audio unlocking
+  /**
+   * Unlocks audio for the browser by playing a silent sound on user interaction.
+   * Uses a fresh Audio instance to avoid potential state issues with reused refs.
+   */
   const handleUnlockAudio = async () => {
-    if (!audioRef.current) return;
-    
     try {
-      // Explicitly set src and load before playing to avoid "no supported sources"
-      audioRef.current.src = SILENT_AUDIO_URI;
-      audioRef.current.load();
-      await audioRef.current.play();
-      
-      // Warm up AudioContext for higher stability on iOS
+      // 1. Unlock Web Audio Context (for Gemini Live / advanced audio)
       const AudioContextClass = (window as any).AudioContext || (window as any).webkitAudioContext;
       if (AudioContextClass) {
         const ctx = new AudioContextClass();
         if (ctx.state === 'suspended') await ctx.resume();
       }
 
+      // 2. Unlock HTML5 Audio (for Adhan and Quran playback)
+      const unlockAudio = new Audio();
+      unlockAudio.src = SILENT_AUDIO_URI;
+      unlockAudio.preload = "auto";
+      
+      // We call load explicitly to ensure the browser processes the Data URI
+      unlockAudio.load();
+      
+      const playPromise = unlockAudio.play();
+      if (playPromise !== undefined) {
+        await playPromise;
+      }
+
       setIsAudioUnlocked(true);
     } catch (e) {
       console.error("Audio unlock failed:", e);
-      // Even if it fails, we mark it as "unlocked" to let user in, 
-      // though Adhan might not play automatically until next interaction.
+      // Fallback: Continue into the app anyway so the user isn't stuck.
+      // Audio may be restricted but the core app remains functional.
       setIsAudioUnlocked(true);
     }
   };
@@ -118,8 +129,7 @@ const App: React.FC = () => {
 
   return (
     <div className="max-w-md mx-auto bg-slate-50 min-h-screen relative shadow-2xl flex flex-col font-['Plus_Jakarta_Sans'] select-none overflow-hidden">
-      <audio ref={audioRef} className="hidden" crossOrigin="anonymous" />
-
+      
       {/* Unlock Screen for Mobile Autoplay Compliance */}
       {!isAudioUnlocked && (
         <div className="fixed inset-0 z-[2000] bg-[#064e3b] flex flex-col items-center justify-center p-10 text-center animate-in fade-in duration-500">
