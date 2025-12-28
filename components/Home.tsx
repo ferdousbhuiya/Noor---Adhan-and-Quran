@@ -98,25 +98,26 @@ const Home: React.FC<HomeProps> = ({ onNavigate, location, adhanSettings, isAudi
     } else {
       setIsAudioLoading(true);
       try {
-        // 1. Resume Audio Context immediately on click
-        const AudioContextClass = (window as any).AudioContext || (window as any).webkitCompassHeading;
+        // Essential for mobile browsers: resume/recreate context on direct interaction
+        const AudioContextClass = (window as any).AudioContext || (window as any).webkitAudioContext;
         if (AudioContextClass) {
           const ctx = new AudioContextClass();
           if (ctx.state === 'suspended') await ctx.resume();
         }
 
-        // 2. Fetch Source (Cached Blob or URL)
+        // Fetch source safely
         const cachedBlob = await db.getAdhanAudio(adhanSettings.voiceId);
-        const finalSrc = cachedBlob ? URL.createObjectURL(cachedBlob) : selectedVoice.url;
+        const sourceUrl = cachedBlob ? URL.createObjectURL(cachedBlob) : selectedVoice.url;
 
-        // 3. Robust reset and play
+        // Reset the audio element to prevent "no supported source" state mismatch
         audio.pause();
-        audio.removeAttribute('src'); // Completely clear the previous source
-        audio.load(); // Reset internal state
+        audio.src = '';
+        audio.load();
         
-        audio.src = finalSrc;
+        // Re-assign and play
+        audio.src = sourceUrl;
+        audio.load();
         
-        // Wait for a tiny tick to let browser register the new source string
         const playPromise = audio.play();
         if (playPromise !== undefined) {
           await playPromise;
@@ -124,15 +125,7 @@ const Home: React.FC<HomeProps> = ({ onNavigate, location, adhanSettings, isAudi
         setIsManualPlaying(true);
       } catch (e) {
         console.error("Adhan playback error:", e);
-        // Fallback: If Blob/DB logic failed, try playing the remote URL directly
-        try {
-          audio.src = selectedVoice.url;
-          await audio.play();
-          setIsManualPlaying(true);
-        } catch (innerE) {
-          console.error("Adhan fallback failed:", innerE);
-          alert("Could not load Adhan audio. Please check your internet connection.");
-        }
+        alert("Audio playback failed. Please check your internet connection or mute settings.");
       } finally {
         setIsAudioLoading(false);
       }

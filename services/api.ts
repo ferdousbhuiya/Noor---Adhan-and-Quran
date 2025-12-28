@@ -1,3 +1,4 @@
+
 import { Surah, Ayah, PrayerTimes } from '../types';
 import { db } from './db';
 import { GoogleGenAI, Type } from "@google/genai";
@@ -10,7 +11,6 @@ const PRAYER_API_BASE = 'https://api.aladhan.com/v1';
  */
 const safeParseJSON = (text: string) => {
   try {
-    // Standard cleanup in case of markdown formatting in raw text responses
     const cleaned = text.replace(/```json/g, '').replace(/```/g, '').trim();
     return JSON.parse(cleaned);
   } catch (e) {
@@ -54,7 +54,7 @@ export const fetchSurahAyahs = async (surahNumber: number, reciter: string = 'ar
 export const fetchLocationSuggestions = async (query: string): Promise<string[]> => {
   if (!query || query.length < 2) return [];
   try {
-    // Direct initialization per guidelines
+    // Instantiate right before use to ensure updated key
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     const response = await ai.models.generateContent({
       model: "gemini-3-flash-preview",
@@ -68,18 +68,16 @@ export const fetchLocationSuggestions = async (query: string): Promise<string[]>
       }
     });
     return safeParseJSON(response.text);
-  } catch (e) {
-    console.error("Suggestion error", e);
-    // Rethrow specific errors to trigger key selection UI
-    if (e.message?.includes("API_KEY") || e.message?.includes("not found")) {
-      throw new Error("API_KEY_MISSING");
+  } catch (e: any) {
+    if (e.message?.includes("not found")) {
+      // Trigger re-selection if key is missing or invalid
+      if (window.aistudio?.openSelectKey) window.aistudio.openSelectKey();
     }
-    return [];
+    throw e;
   }
 };
 
 export const geocodeAddress = async (address: string): Promise<{ lat: number, lng: number, name: string }> => {
-  // Direct initialization per guidelines
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   const response = await ai.models.generateContent({
     model: "gemini-3-flash-preview",
@@ -98,31 +96,15 @@ export const geocodeAddress = async (address: string): Promise<{ lat: number, ln
     }
   });
   
-  const result = safeParseJSON(response.text);
-  if (typeof result.lat !== 'number' || typeof result.lng !== 'number') {
-    throw new Error("Could not resolve coordinates for this location.");
-  }
-  return result;
+  return safeParseJSON(response.text);
 };
 
 export const fetchHijriCalendar = async (year: number, month: number, lat: number, lng: number): Promise<any[]> => {
   const url = `${PRAYER_API_BASE}/calendar?latitude=${lat}&longitude=${lng}&method=4&month=${month}&year=${year}`;
   try {
     const res = await fetch(url);
-    if (!res.ok) throw new Error(`API returned ${res.status}`);
     const data = await res.json();
-    
-    if (data.data && Array.isArray(data.data)) {
-      return data.data;
-    }
-    
-    if (data.data && typeof data.data === 'object') {
-       return Object.keys(data.data)
-        .sort((a, b) => parseInt(a) - parseInt(b))
-        .map(key => data.data[key]);
-    }
-    
-    return [];
+    return Array.isArray(data.data) ? data.data : Object.values(data.data || {});
   } catch (e) {
     console.error("fetchHijriCalendar failed:", e);
     return [];
@@ -138,27 +120,19 @@ export const fetchPrayerTimes = async (
   ishaAngle?: number
 ): Promise<{ times: PrayerTimes; hijriDate: string; hijriArabic: string; locationName: string; rawHijri: any }> => {
   const dateStr = new Date().toISOString().split('T')[0];
-  
   let url = `${PRAYER_API_BASE}/timings?latitude=${latitude}&longitude=${longitude}&method=${method}&school=${school}`;
   
   if (fajrAngle || ishaAngle) {
-    const settings = `${fajrAngle || 'null'},null,${ishaAngle || 'null'}`;
-    url += `&methodSettings=${settings}`;
+    url += `&methodSettings=${fajrAngle || 'null'},null,${ishaAngle || 'null'}`;
   }
 
-  const cacheKey = `${dateStr}_${method}_${school}_${fajrAngle || 0}_${ishaAngle || 0}_${latitude.toFixed(2)}_${longitude.toFixed(2)}`;
-  const localTimes = await db.getPrayerTimes(cacheKey);
+  const cacheKey = `${dateStr}_${latitude.toFixed(2)}_${longitude.toFixed(2)}`;
   
   try {
     const res = await fetch(url);
     const data = await res.json();
-    
-    if (!data.data) throw new Error("Invalid API response");
-
     const timings = data.data.timings;
     const hijri = data.data.date.hijri;
-    
-    db.saveMonthlyPrayer(cacheKey, timings);
     
     return {
       times: timings,
@@ -168,6 +142,7 @@ export const fetchPrayerTimes = async (
       rawHijri: hijri
     };
   } catch (e) {
+    const localTimes = await db.getPrayerTimes(cacheKey);
     if (localTimes) return { times: localTimes, hijriDate: 'Offline Mode', hijriArabic: '', locationName: '', rawHijri: null };
     throw e;
   }
