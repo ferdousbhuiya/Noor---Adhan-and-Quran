@@ -28,6 +28,7 @@ const Home: React.FC<HomeProps> = ({ onNavigate, location, adhanSettings, isAudi
   const [nextPrayer, setNextPrayer] = useState<{name: string, time: string} | null>(null);
   const [remainingTime, setRemainingTime] = useState<string>('');
   const [loading, setLoading] = useState(false);
+  const [isAudioLoading, setIsAudioLoading] = useState(false);
   
   const [isManualPlaying, setIsManualPlaying] = useState(false);
   const manualAudioRef = useRef<HTMLAudioElement | null>(null);
@@ -88,18 +89,52 @@ const Home: React.FC<HomeProps> = ({ onNavigate, location, adhanSettings, isAudi
   };
 
   const toggleManualAdhan = async () => {
-    if (!manualAudioRef.current) return;
+    const audio = manualAudioRef.current;
+    if (!audio) return;
+
     if (isManualPlaying) {
-      manualAudioRef.current.pause();
+      audio.pause();
       setIsManualPlaying(false);
     } else {
+      setIsAudioLoading(true);
       try {
+        // 1. Resume Audio Context immediately on click
+        const AudioContextClass = (window as any).AudioContext || (window as any).webkitCompassHeading;
+        if (AudioContextClass) {
+          const ctx = new AudioContextClass();
+          if (ctx.state === 'suspended') await ctx.resume();
+        }
+
+        // 2. Fetch Source (Cached Blob or URL)
         const cachedBlob = await db.getAdhanAudio(adhanSettings.voiceId);
-        manualAudioRef.current.src = cachedBlob ? URL.createObjectURL(cachedBlob) : selectedVoice.url;
-        await manualAudioRef.current.play();
+        const finalSrc = cachedBlob ? URL.createObjectURL(cachedBlob) : selectedVoice.url;
+
+        // 3. Robust reset and play
+        audio.pause();
+        audio.removeAttribute('src'); // Completely clear the previous source
+        audio.load(); // Reset internal state
+        
+        audio.src = finalSrc;
+        
+        // Wait for a tiny tick to let browser register the new source string
+        const playPromise = audio.play();
+        if (playPromise !== undefined) {
+          await playPromise;
+        }
         setIsManualPlaying(true);
       } catch (e) {
-        alert("Audio blocked. Ensure your device isn't on silent/mute mode.");
+        console.error("Adhan playback error:", e);
+        // Fallback: If Blob/DB logic failed, try playing the remote URL directly
+        try {
+          audio.src = selectedVoice.url;
+          await audio.play();
+          setIsManualPlaying(true);
+        } catch (innerE) {
+          console.error("Adhan fallback failed:", innerE);
+          alert("Could not load Adhan audio. Please check your internet connection.");
+        }
+      } finally {
+        setIsAudioLoading(false);
       }
     }
   };
@@ -108,7 +143,12 @@ const Home: React.FC<HomeProps> = ({ onNavigate, location, adhanSettings, isAudi
 
   return (
     <div className="flex flex-col min-h-screen bg-[#f2f6f4] relative">
-      <audio ref={manualAudioRef} onEnded={() => setIsManualPlaying(false)} className="hidden" crossOrigin="anonymous" />
+      <audio 
+        ref={manualAudioRef} 
+        onEnded={() => setIsManualPlaying(false)} 
+        className="hidden" 
+        preload="auto"
+      />
 
       <div className="fixed inset-0 z-0">
          <div className="absolute inset-0 bg-gradient-to-b from-[#064e3b] via-[#065f46] to-[#f2f6f4]" />
@@ -146,9 +186,10 @@ const Home: React.FC<HomeProps> = ({ onNavigate, location, adhanSettings, isAudi
                     </h1>
                     <button 
                       onClick={toggleManualAdhan}
-                      className={`p-4 rounded-full transition-all active:scale-90 flex items-center justify-center shadow-2xl ${isManualPlaying ? 'bg-amber-500 text-emerald-950 animate-pulse' : 'bg-white/10 text-white hover:bg-white/20'}`}
+                      disabled={isAudioLoading}
+                      className={`p-4 rounded-full transition-all active:scale-90 flex items-center justify-center shadow-2xl ${isManualPlaying ? 'bg-amber-500 text-emerald-950 animate-pulse' : 'bg-white/10 text-white hover:bg-white/20'} ${isAudioLoading ? 'opacity-50' : ''}`}
                     >
-                      {isManualPlaying ? <VolumeX size={24} /> : <Volume2 size={24} />}
+                      {isAudioLoading ? <Loader2 size={24} className="animate-spin" /> : isManualPlaying ? <VolumeX size={24} /> : <Volume2 size={24} />}
                     </button>
                 </div>
                 <div className="mt-8 flex flex-col items-center gap-4">

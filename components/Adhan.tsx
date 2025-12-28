@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { fetchPrayerTimes, geocodeAddress, fetchLocationSuggestions } from '../services/api';
 import { PrayerTimes, AdhanSettings, LocationData } from '../types';
@@ -12,6 +11,8 @@ interface AdhanProps {
   onUpdateSettings: (newSettings: AdhanSettings) => void;
   onUpdateLocation: (newLoc: LocationData) => void;
 }
+
+const SILENT_WAV = "data:audio/wav;base64,UklGRjIAAABXQVZFVG10IBAAAAABAAEAIlYAAClVGAAAgAAAAAABAAgAZGF0YRAAAACAgICAgICAgICAgICAgICA=";
 
 const formatTime12h = (time24: string) => {
   if (!time24) return '--:--';
@@ -157,18 +158,39 @@ const Adhan: React.FC<AdhanProps> = ({ location, settings, onUpdateSettings, onU
     };
   }, [searchQuery]);
 
-  const togglePreview = (id: string, url: string) => {
-    if (!audioRef.current) return;
+  const togglePreview = async (id: string, url: string) => {
+    const audio = audioRef.current;
+    if (!audio) return;
+
     if (isPreviewPlaying === id) {
-      audioRef.current.pause();
+      audio.pause();
       setIsPreviewPlaying(null);
       return;
     }
-    setIsPreviewPlaying(id);
-    audioRef.current.pause();
-    audioRef.current.src = url;
-    audioRef.current.load();
-    audioRef.current.play().catch(() => setIsPreviewPlaying(null));
+
+    try {
+      // "Bless" element on mobile interaction
+      const AudioContextClass = (window as any).AudioContext || (window as any).webkitAudioContext;
+      if (AudioContextClass) {
+        const ctx = new AudioContextClass();
+        if (ctx.state === 'suspended') await ctx.resume();
+      }
+
+      audio.src = SILENT_WAV;
+      await audio.play();
+
+      setIsPreviewPlaying(id);
+      audio.pause();
+      audio.src = url;
+      audio.load();
+      const playPromise = audio.play();
+      if (playPromise !== undefined) {
+        await playPromise;
+      }
+    } catch (e) {
+      console.error("Preview failed:", e);
+      setIsPreviewPlaying(null);
+    }
   };
 
   const handleSelection = async (name: string) => {
@@ -239,7 +261,7 @@ const Adhan: React.FC<AdhanProps> = ({ location, settings, onUpdateSettings, onU
 
   return (
     <div className="p-6 bg-[#f2f6f4] min-h-screen pb-40">
-      <audio ref={audioRef} onEnded={() => setIsPreviewPlaying(null)} className="hidden" />
+      <audio ref={audioRef} onEnded={() => setIsPreviewPlaying(null)} className="hidden" preload="auto" />
 
       <header className="mb-8 px-2">
         <div className="flex justify-between items-end mb-6">
