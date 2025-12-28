@@ -3,7 +3,11 @@ import { fetchPrayerTimes, geocodeAddress, fetchLocationSuggestions } from '../s
 import { PrayerTimes, AdhanSettings, LocationData } from '../types';
 import { ADHAN_OPTIONS, PRAYER_METHODS, PRAYER_SCHOOLS } from '../constants';
 import { db } from '../services/db';
-import { Bell, BellOff, Volume2, Loader2, Check, Settings2, MapPin, X, Download, Trash2, CheckCircle2, Play, Pause, AlertCircle, Calculator, Crosshair, ChevronRight, Search, Sparkles } from 'lucide-react';
+import { 
+  Bell, BellOff, Volume2, Loader2, Check, Settings2, MapPin, X, 
+  Trash2, Play, Pause, AlertCircle, Calculator, Crosshair, 
+  ChevronRight, Search, Sparkles, Map as MapIcon, Mic2
+} from 'lucide-react';
 
 interface AdhanProps {
   location: LocationData | null;
@@ -11,8 +15,6 @@ interface AdhanProps {
   onUpdateSettings: (newSettings: AdhanSettings) => void;
   onUpdateLocation: (newLoc: LocationData) => void;
 }
-
-const SILENT_WAV = "data:audio/wav;base64,UklGRjIAAABXQVZFVG10IBAAAAABAAEAIlYAAClVGAAAgAAAAAABAAgAZGF0YRAAAACAgICAgICAgICAgICAgICA=";
 
 const formatTime12h = (time24: string) => {
   if (!time24) return '--:--';
@@ -25,16 +27,12 @@ const formatTime12h = (time24: string) => {
 const Adhan: React.FC<AdhanProps> = ({ location, settings, onUpdateSettings, onUpdateLocation }) => {
   const [times, setTimes] = useState<PrayerTimes | null>(null);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<'times' | 'voices' | 'calc'>('times');
+  const [activeTab, setActiveTab] = useState<'times' | 'voices' | 'location' | 'calc'>('times');
   const [nextPrayerInfo, setNextPrayerInfo] = useState<{ name: string, time: string, remaining: string } | null>(null);
   
-  const [downloadedIds, setDownloadedIds] = useState<string[]>([]);
-  const [isDownloading, setIsDownloading] = useState<string | null>(null);
   const [isPreviewPlaying, setIsPreviewPlaying] = useState<string | null>(null);
-  
   const audioRef = useRef<HTMLAudioElement | null>(null);
   
-  const [showLocationModal, setShowLocationModal] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [suggestions, setSuggestions] = useState<string[]>([]);
   const [isSearching, setIsSearching] = useState(false);
@@ -42,17 +40,6 @@ const Adhan: React.FC<AdhanProps> = ({ location, settings, onUpdateSettings, onU
   const [searchError, setSearchError] = useState<string | null>(null);
   const [needsKey, setNeedsKey] = useState(false);
   const debounceTimer = useRef<number | null>(null);
-
-  useEffect(() => {
-    db.getAllDownloadedAdhanIds().then(setDownloadedIds);
-    return () => {
-      if (audioRef.current) {
-        audioRef.current.pause();
-        audioRef.current.removeAttribute('src');
-        audioRef.current.load();
-      }
-    };
-  }, []);
 
   useEffect(() => {
     if (location) {
@@ -67,9 +54,7 @@ const Adhan: React.FC<AdhanProps> = ({ location, settings, onUpdateSettings, onU
       ).then(data => {
         setTimes(data.times);
         setLoading(false);
-      }).catch(() => {
-        setLoading(false);
-      });
+      }).catch(() => setLoading(false));
     }
   }, [location, settings.method, settings.school, settings.fajrAngle, settings.ishaAngle]);
 
@@ -137,7 +122,6 @@ const Adhan: React.FC<AdhanProps> = ({ location, settings, onUpdateSettings, onU
       setSuggestions([]);
       return;
     }
-
     setIsSuggesting(true);
     debounceTimer.current = window.setTimeout(async () => {
       try {
@@ -145,48 +129,27 @@ const Adhan: React.FC<AdhanProps> = ({ location, settings, onUpdateSettings, onU
         setSuggestions(results);
         setNeedsKey(false);
       } catch (err: any) {
-        if (err.message === "API_KEY_MISSING") {
-          setNeedsKey(true);
-        }
+        if (err.message === "API_KEY_MISSING") setNeedsKey(true);
       } finally {
         setIsSuggesting(false);
       }
     }, 600) as unknown as number;
-
-    return () => {
-      if (debounceTimer.current) window.clearTimeout(debounceTimer.current);
-    };
   }, [searchQuery]);
 
   const togglePreview = async (id: string, url: string) => {
     const audio = audioRef.current;
     if (!audio) return;
-
     if (isPreviewPlaying === id) {
       audio.pause();
       setIsPreviewPlaying(null);
       return;
     }
-
     try {
-      // "Bless" element on mobile interaction
-      const AudioContextClass = (window as any).AudioContext || (window as any).webkitAudioContext;
-      if (AudioContextClass) {
-        const ctx = new AudioContextClass();
-        if (ctx.state === 'suspended') await ctx.resume();
-      }
-
-      audio.src = SILENT_WAV;
-      await audio.play();
-
-      setIsPreviewPlaying(id);
       audio.pause();
       audio.src = url;
       audio.load();
-      const playPromise = audio.play();
-      if (playPromise !== undefined) {
-        await playPromise;
-      }
+      await audio.play();
+      setIsPreviewPlaying(id);
     } catch (e) {
       console.error("Preview failed:", e);
       setIsPreviewPlaying(null);
@@ -199,28 +162,19 @@ const Adhan: React.FC<AdhanProps> = ({ location, settings, onUpdateSettings, onU
     try {
       const result = await geocodeAddress(name);
       onUpdateLocation({ ...result, isManual: true });
-      setShowLocationModal(false);
+      setActiveTab('times');
       setSearchQuery("");
       setSuggestions([]);
     } catch (e: any) {
-      if (e.message === "API_KEY_MISSING") {
-        setNeedsKey(true);
-      } else {
-        setSearchError(e.message || "Failed to find coordinates for this location.");
-      }
+      if (e.message === "API_KEY_MISSING") setNeedsKey(true);
+      else setSearchError(e.message || "Location not found.");
     } finally {
       setIsSearching(false);
     }
   };
 
-  const handleManualSearch = async () => {
-    if (!searchQuery.trim()) return;
-    handleSelection(searchQuery);
-  };
-
   const useCurrentLocation = () => {
     setIsSearching(true);
-    setSearchError(null);
     navigator.geolocation.getCurrentPosition((pos) => {
       onUpdateLocation({
         lat: pos.coords.latitude,
@@ -228,34 +182,15 @@ const Adhan: React.FC<AdhanProps> = ({ location, settings, onUpdateSettings, onU
         name: "Current Location",
         isManual: false
       });
-      setShowLocationModal(false);
+      setActiveTab('times');
       setIsSearching(false);
-    }, () => {
-      setSearchError("Location access denied or GPS disabled.");
-      setIsSearching(false);
-    }, { timeout: 10000 });
+    }, () => setIsSearching(false));
   };
 
-  const handleSelectKey = async () => {
-    if (window.aistudio?.openSelectKey) {
-      await window.aistudio.openSelectKey();
-      setNeedsKey(false);
-      // After selection, retry suggestion if search query exists
-      if (searchQuery.length >= 2) {
-        try {
-          const results = await fetchLocationSuggestions(searchQuery);
-          setSuggestions(results);
-        } catch (e) {
-          console.error("Retry failed", e);
-        }
-      }
-    }
-  };
-
-  if (loading) return (
+  if (loading && !times) return (
     <div className="flex-1 flex flex-col items-center justify-center min-h-screen bg-[#f2f6f4]">
       <Loader2 className="animate-spin text-emerald-600 mb-4" size={40} />
-      <p className="text-[10px] font-black uppercase tracking-[0.5em]">Adjusting Angles...</p>
+      <p className="text-[10px] font-black uppercase tracking-[0.5em]">Synchronizing...</p>
     </div>
   );
 
@@ -263,34 +198,39 @@ const Adhan: React.FC<AdhanProps> = ({ location, settings, onUpdateSettings, onU
     <div className="p-6 bg-[#f2f6f4] min-h-screen pb-40">
       <audio ref={audioRef} onEnded={() => setIsPreviewPlaying(null)} className="hidden" preload="auto" />
 
-      <header className="mb-8 px-2">
-        <div className="flex justify-between items-end mb-6">
-          <div>
-            <h1 className="text-4xl font-black text-slate-800 tracking-tighter mb-1">Adhan</h1>
-            <button onClick={() => { setSearchError(null); setShowLocationModal(true); }} className="flex items-center gap-2 text-emerald-600 group">
-              <MapPin size={12} fill="currentColor" className="group-hover:animate-bounce" />
-              <span className="text-[10px] font-black uppercase tracking-widest">{location?.name || 'Set Location'}</span>
-            </button>
-          </div>
-          <div className="flex bg-white p-1.5 rounded-[1.8rem] shadow-premium border border-white">
+      <header className="mb-8">
+        <h1 className="text-4xl font-black text-slate-800 tracking-tighter mb-4">Adhan</h1>
+        <div className="flex bg-white p-1.5 rounded-[2rem] shadow-premium border border-white overflow-x-auto no-scrollbar">
+          {[
+            { id: 'times', label: 'Times', icon: <Bell size={14} /> },
+            { id: 'voices', label: 'Voices', icon: <Mic2 size={14} /> },
+            { id: 'location', label: 'Place', icon: <MapIcon size={14} /> },
+            { id: 'calc', label: 'Config', icon: <Settings2 size={14} /> }
+          ].map(tab => (
             <button 
-                onClick={() => setActiveTab('times')}
-                className={`px-5 py-2.5 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all ${activeTab === 'times' ? 'bg-emerald-800 text-white shadow-lg' : 'text-slate-400'}`}
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id as any)}
+              className={`flex items-center gap-2 px-6 py-3 rounded-[1.4rem] text-[10px] font-black uppercase tracking-widest transition-all whitespace-nowrap ${activeTab === tab.id ? 'bg-emerald-800 text-white shadow-lg' : 'text-slate-400'}`}
             >
-                Times
+              {tab.icon} {tab.label}
             </button>
-            <button 
-                onClick={() => setActiveTab('calc')}
-                className={`px-5 py-2.5 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all ${activeTab === 'calc' ? 'bg-emerald-800 text-white shadow-lg' : 'text-slate-400'}`}
-            >
-                Config
-            </button>
-          </div>
+          ))}
         </div>
       </header>
 
       {activeTab === 'times' && (
         <div className="space-y-4 animate-in fade-in duration-500">
+          <div className="bg-white p-5 rounded-[2.5rem] border border-white shadow-premium flex items-center justify-between mb-6">
+             <div className="flex items-center gap-3">
+                <div className="p-3 bg-emerald-50 rounded-2xl text-emerald-600"><MapPin size={20} /></div>
+                <div>
+                   <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Active Zone</p>
+                   <h4 className="font-black text-slate-800 tracking-tight">{location?.name || 'Global'}</h4>
+                </div>
+             </div>
+             <button onClick={() => setActiveTab('location')} className="p-3 bg-slate-50 text-slate-400 rounded-2xl"><ChevronRight size={18} /></button>
+          </div>
+
           {nextPrayerInfo && (
             <div className="bg-emerald-950 rounded-[3rem] p-8 mb-4 text-white shadow-2xl relative overflow-hidden group">
               <div className="absolute inset-0 bg-gradient-to-br from-white/10 to-transparent opacity-50" />
@@ -324,17 +264,89 @@ const Adhan: React.FC<AdhanProps> = ({ location, settings, onUpdateSettings, onU
               </div>
             );
           })}
-          
-          <button onClick={() => setActiveTab('voices')} className="w-full bg-white p-7 rounded-[2.5rem] border border-white flex items-center justify-between group active:scale-[0.98] transition-all mt-4">
-             <div className="flex items-center gap-4">
-                <div className="w-12 h-12 rounded-2xl bg-amber-50 text-amber-600 flex items-center justify-center"><Volume2 size={24} /></div>
-                <div className="text-left">
-                   <h4 className="font-black text-slate-800 uppercase text-[10px] tracking-widest">Adhan Voice</h4>
-                   <p className="text-xs font-bold text-slate-400">Current: {ADHAN_OPTIONS.find(o => o.id === settings.voiceId)?.name}</p>
+        </div>
+      )}
+
+      {activeTab === 'voices' && (
+        <div className="space-y-4 animate-in fade-in duration-500">
+          <div className="bg-emerald-100 p-6 rounded-[2.5rem] border border-emerald-200 mb-6 flex gap-4">
+             <Volume2 className="text-emerald-700 shrink-0" size={20} />
+             <p className="text-[11px] font-bold text-emerald-900 leading-relaxed">Choose the voice that calls you to prayer. This voice will be used for all notifications.</p>
+          </div>
+          {ADHAN_OPTIONS.map((option) => {
+            const isSelected = settings.voiceId === option.id;
+            const playing = isPreviewPlaying === option.id;
+            return (
+              <div key={option.id} className={`p-6 rounded-[2.5rem] border transition-all flex flex-col gap-4 ${isSelected ? 'bg-emerald-900 text-white border-emerald-950 shadow-xl' : 'bg-white border-white shadow-premium'}`}>
+                <div className="flex items-center justify-between">
+                  <div className="flex-1">
+                    <h4 className="font-black text-lg">{option.name}</h4>
+                    <p className={`text-[9px] font-black uppercase tracking-widest ${isSelected ? 'text-emerald-300' : 'text-slate-400'}`}>{option.muezzin}</p>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <button 
+                      onClick={() => togglePreview(option.id, option.url)}
+                      className={`p-4 rounded-2xl transition-all ${playing ? 'bg-amber-500 text-white' : isSelected ? 'bg-white/10 text-white' : 'bg-slate-50 text-emerald-600'}`}
+                    >
+                      {playing ? <Pause size={20} /> : <Play size={20} fill="currentColor" />}
+                    </button>
+                    {!isSelected && (
+                      <button 
+                        onClick={() => onUpdateSettings({...settings, voiceId: option.id})}
+                        className="bg-emerald-50 text-emerald-900 px-6 py-4 rounded-2xl font-black text-[10px] uppercase tracking-widest"
+                      >
+                        Select
+                      </button>
+                    )}
+                    {isSelected && <div className="p-4 bg-emerald-500 rounded-2xl text-white"><Check size={20} /></div>}
+                  </div>
                 </div>
-             </div>
-             <ChevronRight className="text-slate-200 group-hover:translate-x-1 transition-transform" />
-          </button>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {activeTab === 'location' && (
+        <div className="space-y-6 animate-in slide-in-from-right duration-500">
+           <div className="bg-white p-8 rounded-[3rem] shadow-premium border border-white">
+              <h3 className="font-black text-2xl tracking-tighter mb-6">Location Finder</h3>
+              
+              <div className="relative mb-6">
+                <input 
+                  value={searchQuery} 
+                  onChange={e => setSearchQuery(e.target.value)} 
+                  placeholder="City or Address..." 
+                  className="w-full bg-slate-50 border-2 border-transparent rounded-[1.8rem] p-5 pr-16 text-sm font-bold outline-none focus:bg-white focus:border-emerald-500/20 transition-all shadow-inner"
+                />
+                <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-2">
+                    {isSuggesting && <Loader2 size={16} className="animate-spin text-emerald-600 mr-2" />}
+                    <button onClick={() => handleSelection(searchQuery)} className="p-3.5 bg-emerald-950 text-white rounded-2xl">
+                        <Search size={18} />
+                    </button>
+                </div>
+              </div>
+
+              {suggestions.length > 0 && (
+                <div className="bg-slate-50 rounded-[2rem] border border-slate-100 overflow-hidden mb-6">
+                  {suggestions.map((s, i) => (
+                    <button key={i} onClick={() => handleSelection(s)} className="w-full text-left p-5 hover:bg-emerald-50 transition-colors flex items-center justify-between border-b border-white last:border-0">
+                      <span className="text-sm font-bold text-slate-700">{s}</span>
+                      <ChevronRight size={14} className="text-slate-300" />
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              <button 
+                onClick={useCurrentLocation} 
+                disabled={isSearching}
+                className="w-full bg-emerald-950 text-white p-6 rounded-[2.2rem] font-black uppercase tracking-widest flex items-center justify-center gap-3 active:scale-[0.98] transition-all shadow-xl"
+              >
+                {isSearching ? <Loader2 size={20} className="animate-spin" /> : <Crosshair size={20} />}
+                Pinpoint via GPS
+              </button>
+           </div>
         </div>
       )}
 
@@ -352,7 +364,7 @@ const Adhan: React.FC<AdhanProps> = ({ location, settings, onUpdateSettings, onU
                    <select 
                     value={settings.method}
                     onChange={(e) => onUpdateSettings({...settings, method: parseInt(e.target.value)})}
-                    className="w-full bg-slate-50 border-none rounded-2xl p-5 text-sm font-bold outline-none ring-2 ring-transparent focus:ring-emerald-500/20 transition-all"
+                    className="w-full bg-slate-50 border-none rounded-2xl p-5 text-sm font-bold outline-none"
                    >
                      {PRAYER_METHODS.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
                    </select>
@@ -394,145 +406,7 @@ const Adhan: React.FC<AdhanProps> = ({ location, settings, onUpdateSettings, onU
                     </div>
                 </div>
               </div>
-              
-              <div className="p-5 bg-amber-50 rounded-[2rem] flex gap-4">
-                 <AlertCircle size={18} className="text-amber-600 shrink-0" />
-                 <p className="text-[10px] font-bold text-amber-800 leading-relaxed">Adjusting angles is recommended only for high-latitude regions or specific local requirements.</p>
-              </div>
            </div>
-        </div>
-      )}
-
-      {activeTab === 'voices' && (
-        <div className="space-y-4 animate-in fade-in duration-500">
-          <div className="flex items-center gap-3 mb-6 px-2">
-             <button onClick={() => setActiveTab('times')} className="p-2 bg-white rounded-xl shadow-sm text-slate-400"><X size={18} /></button>
-             <h2 className="font-black text-xl tracking-tight">Adhan Voices</h2>
-          </div>
-          {ADHAN_OPTIONS.map((option) => {
-            const isSelected = settings.voiceId === option.id;
-            const playing = isPreviewPlaying === option.id;
-            return (
-              <div key={option.id} className={`p-6 rounded-[2.5rem] border transition-all flex flex-col gap-4 ${isSelected ? 'bg-emerald-900 text-white border-emerald-950' : 'bg-white border-white shadow-premium'}`}>
-                <div className="flex items-center justify-between">
-                  <div className="flex-1">
-                    <h4 className="font-black text-base">{option.name}</h4>
-                    <p className={`text-[9px] font-black uppercase tracking-widest ${isSelected ? 'text-emerald-300' : 'text-slate-400'}`}>{option.muezzin}</p>
-                  </div>
-                  <button 
-                    onClick={() => togglePreview(option.id, option.url)}
-                    className={`p-4 rounded-2xl transition-all ${playing ? 'bg-amber-500 text-white' : isSelected ? 'bg-white/10 text-white' : 'bg-slate-50 text-emerald-600'}`}
-                  >
-                    {playing ? <Pause size={18} fill="currentColor" /> : <Play size={18} fill="currentColor" />}
-                  </button>
-                </div>
-                {!isSelected && (
-                    <button 
-                        onClick={() => onUpdateSettings({...settings, voiceId: option.id})}
-                        className="w-full py-4 bg-emerald-950/10 text-emerald-900 rounded-2xl font-black text-[10px] uppercase tracking-widest hover:bg-emerald-950 hover:text-white transition-all"
-                    >
-                        Select Voice
-                    </button>
-                )}
-              </div>
-            );
-          })}
-        </div>
-      )}
-
-      {showLocationModal && (
-        <div className="fixed inset-0 bg-black/70 backdrop-blur-xl z-[200] flex items-end justify-center p-4">
-          <div className="bg-white w-full max-w-lg rounded-t-[4rem] p-8 shadow-2xl animate-in slide-in-from-bottom duration-500 relative flex flex-col max-h-[90vh]">
-            <header className="flex justify-between items-center mb-6 shrink-0">
-              <div>
-                <h3 className="font-black text-2xl tracking-tighter">Location Finder</h3>
-                <p className="text-[10px] text-slate-400 font-black uppercase tracking-widest">AI Assisted Search</p>
-              </div>
-              <button onClick={() => setShowLocationModal(false)} className="p-3 bg-slate-50 rounded-full"><X size={20} /></button>
-            </header>
-
-            <div className="space-y-5 overflow-y-auto no-scrollbar pb-10">
-              {needsKey && (
-                <div className="bg-amber-50 border border-amber-100 p-5 rounded-[2.2rem] flex flex-col gap-4 animate-in zoom-in duration-300">
-                   <div className="flex gap-3">
-                      <Sparkles size={18} className="text-amber-600 shrink-0" />
-                      <p className="text-[11px] font-black text-amber-900 uppercase tracking-tight">AI Activation Required</p>
-                   </div>
-                   <p className="text-[10px] font-bold text-amber-800 leading-relaxed">To use the Smart Location Finder, please select an API key from your project.</p>
-                   <button 
-                    onClick={handleSelectKey}
-                    className="bg-emerald-900 text-white py-4 rounded-2xl font-black text-[10px] uppercase tracking-widest shadow-lg active:scale-95"
-                   >
-                     Select API Key
-                   </button>
-                   <a href="https://ai.google.dev/gemini-api/docs/billing" target="_blank" className="text-center text-[8px] font-black text-amber-600/50 underline uppercase">Billing Documentation</a>
-                </div>
-              )}
-
-              {searchError && (
-                <div className="bg-rose-50 border border-rose-100 p-4 rounded-3xl flex gap-3 animate-in fade-in slide-in-from-top-2">
-                   <AlertCircle size={16} className="text-rose-600 shrink-0 mt-0.5" />
-                   <p className="text-[10px] font-bold text-rose-800 leading-tight">{searchError}</p>
-                </div>
-              )}
-
-              <div className="relative group">
-                <input 
-                  value={searchQuery} 
-                  onChange={e => { setSearchQuery(e.target.value); setSearchError(null); }} 
-                  placeholder="e.g. London, UK" 
-                  className="w-full bg-slate-50 border-2 border-transparent rounded-[2rem] p-5 pr-16 text-sm font-bold outline-none focus:bg-white focus:border-emerald-500/20 transition-all shadow-inner"
-                  onKeyPress={(e) => e.key === 'Enter' && handleManualSearch()}
-                />
-                <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-2">
-                    {isSuggesting && <Loader2 size={16} className="animate-spin text-emerald-600 mr-2" />}
-                    <button 
-                        onClick={handleManualSearch}
-                        disabled={isSearching || !searchQuery}
-                        className="p-3.5 bg-emerald-950 text-white rounded-2xl disabled:opacity-30 transition-all active:scale-90"
-                    >
-                        {isSearching ? <Loader2 size={18} className="animate-spin" /> : <Search size={18} />}
-                    </button>
-                </div>
-              </div>
-
-              {suggestions.length > 0 && (
-                <div className="bg-white rounded-[2.5rem] border border-slate-100 overflow-hidden animate-in fade-in slide-in-from-top-4 duration-300 shadow-xl shadow-slate-200/50">
-                  <p className="text-[8px] font-black text-slate-300 uppercase tracking-widest p-4 pb-2">Did you mean?</p>
-                  {suggestions.map((s, i) => (
-                    <button 
-                      key={i} 
-                      onClick={() => handleSelection(s)}
-                      className="w-full text-left p-5 hover:bg-emerald-50 transition-colors flex items-center justify-between group border-b border-slate-50 last:border-0"
-                    >
-                      <div className="flex items-center gap-4">
-                         <div className="p-2 bg-slate-50 rounded-xl group-hover:bg-white transition-colors">
-                            <MapPin size={16} className="text-slate-400 group-hover:text-emerald-600" />
-                         </div>
-                         <span className="text-sm font-black text-slate-700">{s}</span>
-                      </div>
-                      <ChevronRight size={14} className="text-slate-200 group-hover:translate-x-1 transition-transform" />
-                    </button>
-                  ))}
-                </div>
-              )}
-
-              <div className="flex items-center gap-4 py-2">
-                 <div className="h-px flex-1 bg-slate-100" />
-                 <span className="text-[8px] font-black text-slate-300 uppercase tracking-widest">or use sensors</span>
-                 <div className="h-px flex-1 bg-slate-100" />
-              </div>
-
-              <button 
-                onClick={useCurrentLocation} 
-                disabled={isSearching}
-                className="w-full bg-white border-2 border-emerald-900 text-emerald-950 p-6 rounded-[2.2rem] font-black uppercase tracking-widest flex items-center justify-center gap-3 active:scale-[0.98] transition-all shadow-xl shadow-emerald-900/5"
-              >
-                {isSearching ? <Loader2 size={20} className="animate-spin" /> : <Crosshair size={20} />}
-                Pinpoint via GPS
-              </button>
-            </div>
-          </div>
         </div>
       )}
     </div>
