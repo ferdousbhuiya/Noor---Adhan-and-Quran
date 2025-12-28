@@ -98,34 +98,26 @@ const Home: React.FC<HomeProps> = ({ onNavigate, location, adhanSettings, isAudi
     } else {
       setIsAudioLoading(true);
       try {
-        // Essential for mobile browsers: resume/recreate context on direct interaction
         const AudioContextClass = (window as any).AudioContext || (window as any).webkitAudioContext;
         if (AudioContextClass) {
           const ctx = new AudioContextClass();
           if (ctx.state === 'suspended') await ctx.resume();
         }
 
-        // Fetch source safely
         const cachedBlob = await db.getAdhanAudio(adhanSettings.voiceId);
         const sourceUrl = cachedBlob ? URL.createObjectURL(cachedBlob) : selectedVoice.url;
 
-        // Reset the audio element to prevent "no supported source" state mismatch
         audio.pause();
         audio.src = '';
         audio.load();
-        
-        // Re-assign and play
         audio.src = sourceUrl;
         audio.load();
         
-        const playPromise = audio.play();
-        if (playPromise !== undefined) {
-          await playPromise;
-        }
+        await audio.play();
         setIsManualPlaying(true);
       } catch (e) {
         console.error("Adhan playback error:", e);
-        alert("Audio playback failed. Please check your internet connection or mute settings.");
+        alert("Audio failed. Try switching Voice or checking your network.");
       } finally {
         setIsAudioLoading(false);
       }
@@ -136,12 +128,7 @@ const Home: React.FC<HomeProps> = ({ onNavigate, location, adhanSettings, isAudi
 
   return (
     <div className="flex flex-col min-h-screen bg-[#f2f6f4] relative">
-      <audio 
-        ref={manualAudioRef} 
-        onEnded={() => setIsManualPlaying(false)} 
-        className="hidden" 
-        preload="auto"
-      />
+      <audio ref={manualAudioRef} onEnded={() => setIsManualPlaying(false)} className="hidden" preload="auto" />
 
       <div className="fixed inset-0 z-0">
          <div className="absolute inset-0 bg-gradient-to-b from-[#064e3b] via-[#065f46] to-[#f2f6f4]" />
@@ -152,49 +139,48 @@ const Home: React.FC<HomeProps> = ({ onNavigate, location, adhanSettings, isAudi
         <div className="pt-14 pb-16 px-6 flex flex-col items-center text-center">
           <div className={`flex items-center gap-3 mb-10 backdrop-blur-xl px-5 py-2.5 rounded-full border shadow-xl transition-all ${isAudioReady ? 'bg-emerald-400/10 border-emerald-400/20 text-emerald-400' : 'bg-white/10 border-white/20 text-white'}`}>
               {isAudioReady ? <ShieldCheck size={14} /> : <BellRing size={14} className="animate-pulse" />}
-              <span className="text-[10px] font-black uppercase tracking-[0.4em]">{isAudioReady ? 'Engine Ready' : 'Monitoring'}</span>
+              <span className="text-[10px] font-black uppercase tracking-[0.4em]">{isAudioReady ? 'Engine Ready' : 'Syncing...'}</span>
           </div>
 
           <div className="mb-14 w-full px-4">
             {loading ? (
               <div className="flex flex-col items-center gap-4 py-20">
                 <Loader2 className="animate-spin text-white/50" size={40} />
-                <p className="text-[10px] font-black text-white/40 uppercase tracking-widest">Calculating Times...</p>
+                <p className="text-[10px] font-black text-white/40 uppercase tracking-widest">Calculating...</p>
               </div>
             ) : !location ? (
               <div className="flex flex-col items-center gap-6 py-10">
-                 <div className="w-16 h-16 bg-white/10 rounded-3xl flex items-center justify-center text-white">
+                 <div className="w-16 h-16 bg-white/10 rounded-3xl flex items-center justify-center text-white border border-white/20">
                     <Map size={32} />
                  </div>
-                 <button onClick={() => onNavigate(AppSection.Adhan)} className="bg-amber-500 text-emerald-950 px-8 py-4 rounded-2xl font-black text-xs uppercase tracking-widest shadow-2xl active:scale-95">
-                    Set Location
+                 <button onClick={() => onNavigate(AppSection.Adhan)} className="bg-amber-500 text-emerald-950 px-10 py-5 rounded-[2rem] font-black text-xs uppercase tracking-[0.2em] shadow-2xl active:scale-95">
+                    Set My Location
                  </button>
               </div>
             ) : (
               <>
-                <p className="text-[11px] font-black uppercase tracking-[0.5em] text-emerald-400 mb-5">{nextPrayer?.name || 'Syncing'} Adhan</p>
+                <p className="text-[11px] font-black uppercase tracking-[0.5em] text-emerald-400 mb-5">{nextPrayer?.name || '---'} Adhan</p>
                 <div className="flex items-center justify-center gap-4">
-                    <h1 className="text-[6rem] sm:text-[7rem] font-black tracking-tighter text-white leading-none drop-shadow-2xl">
+                    <h1 className="text-[6rem] sm:text-[7.5rem] font-black tracking-tighter text-white leading-none drop-shadow-2xl">
                     {nextPrayer ? formatTime12h(nextPrayer.time).split(' ')[0] : '--:--'}
                     </h1>
                     <button 
                       onClick={toggleManualAdhan}
                       disabled={isAudioLoading}
-                      className={`p-4 rounded-full transition-all active:scale-90 flex items-center justify-center shadow-2xl ${isManualPlaying ? 'bg-amber-500 text-emerald-950 animate-pulse' : 'bg-white/10 text-white hover:bg-white/20'} ${isAudioLoading ? 'opacity-50' : ''}`}
+                      className={`p-5 rounded-full transition-all active:scale-90 flex items-center justify-center shadow-2xl ${isManualPlaying ? 'bg-amber-500 text-emerald-950 animate-pulse' : 'bg-white/10 text-white hover:bg-white/20'} ${isAudioLoading ? 'opacity-50' : ''}`}
                     >
                       {isAudioLoading ? <Loader2 size={24} className="animate-spin" /> : isManualPlaying ? <VolumeX size={24} /> : <Volume2 size={24} />}
                     </button>
                 </div>
-                <div className="mt-8 flex flex-col items-center gap-4">
-                  <div className="px-8 py-3.5 rounded-full bg-amber-500 text-emerald-950 shadow-2xl flex items-center gap-3 border border-amber-400/50 scale-105">
-                      <span className="text-xs font-black tracking-widest uppercase">{remainingTime || '...'}</span>
+                <div className="mt-10 flex flex-col items-center gap-4">
+                  <div className="px-10 py-4 rounded-full bg-amber-500 text-emerald-950 shadow-2xl flex items-center gap-3 border border-amber-400/50 scale-105">
+                      <span className="text-sm font-black tracking-[0.1em] tabular-nums uppercase">{remainingTime || '00:00:00'}</span>
                   </div>
-                  <div className="flex flex-col items-center gap-1 opacity-80">
+                  <div className="flex flex-col items-center gap-1 opacity-80 mt-2">
                       <div className="flex items-center gap-2">
                         <MapPin size={12} className="text-white fill-emerald-500" />
-                        <span className="text-[10px] font-black text-white uppercase tracking-[0.3em]">{location?.name || 'Searching...'}</span>
+                        <span className="text-[10px] font-black text-white uppercase tracking-[0.3em]">{location?.name || 'Location...'}</span>
                       </div>
-                      <p className="text-[8px] font-black text-emerald-300/60 uppercase tracking-widest mt-1">Voice: {selectedVoice.name}</p>
                   </div>
                 </div>
               </>
@@ -202,36 +188,37 @@ const Home: React.FC<HomeProps> = ({ onNavigate, location, adhanSettings, isAudi
           </div>
         </div>
 
-        <div className="px-6 -mt-10 mb-10">
+        {/* Hijri Date Card */}
+        <div className="px-6 -mt-12 mb-10">
           <div 
             onClick={() => onNavigate(AppSection.Calendar)}
-            className="bg-white p-7 rounded-[3rem] shadow-premium flex items-center justify-between border border-white relative overflow-hidden group cursor-pointer active:scale-[0.98] transition-all"
+            className="bg-white p-8 rounded-[3.5rem] shadow-premium flex items-center justify-between border border-white relative overflow-hidden group cursor-pointer active:scale-[0.98] transition-all"
           >
-            <div className="flex items-center gap-5 relative z-10">
-              <div className="w-16 h-16 rounded-[1.8rem] bg-emerald-950 flex flex-col items-center justify-center text-white shadow-xl">
+            <div className="flex items-center gap-6 relative z-10">
+              <div className="w-16 h-16 rounded-[2rem] bg-emerald-950 flex flex-col items-center justify-center text-white shadow-xl">
                   <span className="text-xl font-black leading-none mb-0.5">{hijriParts[0] || '--'}</span>
                   <span className="text-[8px] uppercase font-black text-emerald-400 tracking-tighter">{hijriParts[1]?.substring(0,3) || '...'}</span>
               </div>
               <div className="flex flex-col text-left">
-                <h2 className="arabic-text text-2xl font-bold text-emerald-900 leading-none mb-2">{hijriArabic || 'جاري التحميل...'}</h2>
-                <p className="text-[9px] text-slate-400 font-black uppercase tracking-[0.3em] flex items-center gap-1.5">
-                  {hijriDate || 'Determining Date'}
+                <h2 className="arabic-text text-3xl font-bold text-emerald-900 leading-none mb-2">{hijriArabic || 'جاري التحميل...'}</h2>
+                <p className="text-[9px] text-slate-400 font-black uppercase tracking-[0.3em]">
+                  {hijriDate || 'Determining lunar date...'}
                 </p>
               </div>
             </div>
-            <button className="w-14 h-14 flex items-center justify-center bg-slate-50 text-emerald-900 rounded-3xl group-hover:bg-emerald-950 group-hover:text-white transition-all border border-slate-100">
+            <button className="w-14 h-14 flex items-center justify-center bg-slate-50 text-emerald-900 rounded-[1.8rem] group-hover:bg-emerald-950 group-hover:text-white transition-all border border-slate-100">
               <ChevronRight size={24} />
             </button>
           </div>
         </div>
 
         <div className="bg-[#f2f6f4] rounded-t-[4rem] px-6 pt-4 pb-36 space-y-10">
-          <div className="grid grid-cols-3 gap-5">
+          <div className="grid grid-cols-3 gap-6">
             <ActionItem icon={<BookOpen size={24} />} label="Quran" onClick={() => onNavigate(AppSection.Quran)} color="bg-emerald-800" />
             <ActionItem icon={<CircleDot size={24} />} label="Tasbih" onClick={() => onNavigate(AppSection.Tasbih)} color="bg-emerald-700" />
             <ActionItem icon={<Heart size={24} />} label="Dua" onClick={() => onNavigate(AppSection.Dua)} color="bg-emerald-600" />
             <ActionItem icon={<Clock size={24} />} label="Adhan" onClick={() => onNavigate(AppSection.Adhan)} color="bg-emerald-500" />
-            <ActionItem icon={<CalendarIcon size={24} />} label="Calendar" onClick={() => onNavigate(AppSection.Calendar)} color="bg-amber-600" />
+            <ActionItem icon={<CalendarIcon size={24} />} label="Lunar" onClick={() => onNavigate(AppSection.Calendar)} color="bg-amber-600" />
             <ActionItem icon={<Compass size={24} />} label="Qiblah" onClick={() => onNavigate(AppSection.Qiblah)} color="bg-emerald-400" />
           </div>
         </div>
@@ -242,7 +229,7 @@ const Home: React.FC<HomeProps> = ({ onNavigate, location, adhanSettings, isAudi
 
 const ActionItem: React.FC<{icon: any, label: string, onClick: any, color: string}> = ({ icon, label, onClick, color }) => (
   <button onClick={onClick} className="flex flex-col items-center gap-3 group">
-    <div className={`w-full aspect-square rounded-[2.2rem] flex items-center justify-center text-white shadow-xl ${color} active:scale-90 transition-all group-hover:-translate-y-2 duration-500 border border-white/10`}>
+    <div className={`w-full aspect-square rounded-[2.5rem] flex items-center justify-center text-white shadow-xl ${color} active:scale-90 transition-all group-hover:-translate-y-2 duration-500 border border-white/10`}>
       {icon}
     </div>
     <span className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-400 group-hover:text-emerald-900 transition-colors">{label}</span>

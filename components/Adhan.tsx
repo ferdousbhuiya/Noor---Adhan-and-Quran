@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { fetchPrayerTimes, geocodeAddress, fetchLocationSuggestions } from '../services/api';
 import { PrayerTimes, AdhanSettings, LocationData } from '../types';
@@ -38,7 +39,6 @@ const Adhan: React.FC<AdhanProps> = ({ location, settings, onUpdateSettings, onU
   const [isSearching, setIsSearching] = useState(false);
   const [isSuggesting, setIsSuggesting] = useState(false);
   const [searchError, setSearchError] = useState<string | null>(null);
-  const [needsKey, setNeedsKey] = useState(false);
   const debounceTimer = useRef<number | null>(null);
 
   useEffect(() => {
@@ -127,9 +127,8 @@ const Adhan: React.FC<AdhanProps> = ({ location, settings, onUpdateSettings, onU
       try {
         const results = await fetchLocationSuggestions(searchQuery);
         setSuggestions(results);
-        setNeedsKey(false);
       } catch (err: any) {
-        if (err.message === "API_KEY_MISSING") setNeedsKey(true);
+        console.error(err);
       } finally {
         setIsSuggesting(false);
       }
@@ -146,6 +145,8 @@ const Adhan: React.FC<AdhanProps> = ({ location, settings, onUpdateSettings, onU
     }
     try {
       audio.pause();
+      audio.src = '';
+      audio.load();
       audio.src = url;
       audio.load();
       await audio.play();
@@ -166,8 +167,7 @@ const Adhan: React.FC<AdhanProps> = ({ location, settings, onUpdateSettings, onU
       setSearchQuery("");
       setSuggestions([]);
     } catch (e: any) {
-      if (e.message === "API_KEY_MISSING") setNeedsKey(true);
-      else setSearchError(e.message || "Location not found.");
+      setSearchError(e.message || "Location not found.");
     } finally {
       setIsSearching(false);
     }
@@ -198,19 +198,19 @@ const Adhan: React.FC<AdhanProps> = ({ location, settings, onUpdateSettings, onU
     <div className="p-6 bg-[#f2f6f4] min-h-screen pb-40">
       <audio ref={audioRef} onEnded={() => setIsPreviewPlaying(null)} className="hidden" preload="auto" />
 
-      <header className="mb-8">
-        <h1 className="text-4xl font-black text-slate-800 tracking-tighter mb-4">Adhan</h1>
-        <div className="flex bg-white p-1.5 rounded-[2rem] shadow-premium border border-white overflow-x-auto no-scrollbar">
+      <header className="mb-10">
+        <h1 className="text-4xl font-black text-slate-800 tracking-tighter mb-8 px-2">Adhan</h1>
+        <div className="flex bg-white p-2 rounded-[2.5rem] shadow-premium border border-white overflow-x-auto no-scrollbar gap-2">
           {[
             { id: 'times', label: 'Times', icon: <Bell size={14} /> },
             { id: 'voices', label: 'Voices', icon: <Mic2 size={14} /> },
-            { id: 'location', label: 'Place', icon: <MapIcon size={14} /> },
+            { id: 'location', label: 'Location', icon: <MapIcon size={14} /> },
             { id: 'calc', label: 'Config', icon: <Settings2 size={14} /> }
           ].map(tab => (
             <button 
               key={tab.id}
               onClick={() => setActiveTab(tab.id as any)}
-              className={`flex items-center gap-2 px-6 py-3 rounded-[1.4rem] text-[10px] font-black uppercase tracking-widest transition-all whitespace-nowrap ${activeTab === tab.id ? 'bg-emerald-800 text-white shadow-lg' : 'text-slate-400'}`}
+              className={`flex-1 flex items-center justify-center gap-2 px-6 py-4 rounded-[1.8rem] text-[9px] font-black uppercase tracking-widest transition-all whitespace-nowrap ${activeTab === tab.id ? 'bg-emerald-900 text-white shadow-xl' : 'text-slate-400 hover:bg-slate-50'}`}
             >
               {tab.icon} {tab.label}
             </button>
@@ -220,131 +220,151 @@ const Adhan: React.FC<AdhanProps> = ({ location, settings, onUpdateSettings, onU
 
       {activeTab === 'times' && (
         <div className="space-y-4 animate-in fade-in duration-500">
-          <div className="bg-white p-5 rounded-[2.5rem] border border-white shadow-premium flex items-center justify-between mb-6">
-             <div className="flex items-center gap-3">
-                <div className="p-3 bg-emerald-50 rounded-2xl text-emerald-600"><MapPin size={20} /></div>
+          <div className="bg-white p-6 rounded-[3rem] border border-white shadow-premium flex items-center justify-between mb-8">
+             <div className="flex items-center gap-4">
+                <div className="p-4 bg-emerald-50 rounded-[1.8rem] text-emerald-600"><MapPin size={22} /></div>
                 <div>
-                   <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Active Zone</p>
-                   <h4 className="font-black text-slate-800 tracking-tight">{location?.name || 'Global'}</h4>
+                   <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-0.5">Active Region</p>
+                   <h4 className="font-black text-slate-800 tracking-tight text-lg">{location?.name || '---'}</h4>
                 </div>
              </div>
-             <button onClick={() => setActiveTab('location')} className="p-3 bg-slate-50 text-slate-400 rounded-2xl"><ChevronRight size={18} /></button>
+             <button onClick={() => setActiveTab('location')} className="p-4 bg-slate-50 text-slate-400 rounded-2xl"><ChevronRight size={18} /></button>
           </div>
 
           {nextPrayerInfo && (
-            <div className="bg-emerald-950 rounded-[3rem] p-8 mb-4 text-white shadow-2xl relative overflow-hidden group">
-              <div className="absolute inset-0 bg-gradient-to-br from-white/10 to-transparent opacity-50" />
+            <div className="bg-emerald-950 rounded-[3.5rem] p-10 mb-6 text-white shadow-2xl relative overflow-hidden group">
+              <div className="absolute inset-0 bg-gradient-to-br from-emerald-500/20 to-transparent opacity-50" />
               <div className="relative z-10">
-                <span className="text-[10px] font-black uppercase tracking-[0.3em] text-emerald-400 block mb-2">Up Next: {nextPrayerInfo.name}</span>
-                <div className="flex items-baseline gap-3">
-                    <h2 className="text-4xl font-black tracking-tighter">{formatTime12h(nextPrayerInfo.time)}</h2>
-                    <span className="text-xs text-emerald-100/60 font-black uppercase tracking-widest">{nextPrayerInfo.remaining}</span>
+                <span className="text-[10px] font-black uppercase tracking-[0.4em] text-emerald-400 block mb-3">Up Next: {nextPrayerInfo.name}</span>
+                <div className="flex items-baseline gap-4">
+                    <h2 className="text-5xl font-black tracking-tighter">{formatTime12h(nextPrayerInfo.time)}</h2>
+                    <span className="text-sm text-emerald-100/40 font-black uppercase tracking-[0.2em]">{nextPrayerInfo.remaining}</span>
                 </div>
               </div>
             </div>
           )}
-          {prayerList.map((prayer) => {
-            const isCurrent = prayer.name === currentAndNext.current;
-            const isNotify = settings.notifications[prayer.name];
-            return (
-              <div key={prayer.name} className={`flex items-center gap-5 p-6 rounded-[2.8rem] transition-all ${isCurrent ? 'bg-emerald-700 text-white shadow-xl scale-[1.02]' : 'bg-white text-slate-800 border border-white'}`}>
-                <div className="w-12 h-12 rounded-2xl bg-black/5 flex items-center justify-center text-xl">{prayer.icon}</div>
-                <div className="flex-1">
-                  <h3 className="text-[10px] font-black uppercase tracking-widest opacity-60">{prayer.name}</h3>
-                  <p className="text-xl font-black tracking-tight">{formatTime12h(prayer.time)}</p>
+          
+          <div className="space-y-3">
+            {prayerList.map((prayer) => {
+              const isCurrent = prayer.name === currentAndNext.current;
+              const isNotify = settings.notifications[prayer.name];
+              return (
+                <div key={prayer.name} className={`flex items-center gap-5 p-6 rounded-[3rem] transition-all ${isCurrent ? 'bg-emerald-700 text-white shadow-xl scale-[1.02] border-emerald-600' : 'bg-white text-slate-800 border border-white shadow-premium'}`}>
+                  <div className={`w-14 h-14 rounded-3xl flex items-center justify-center text-2xl ${isCurrent ? 'bg-white/10' : 'bg-emerald-50'}`}>{prayer.icon}</div>
+                  <div className="flex-1">
+                    <h3 className={`text-[10px] font-black uppercase tracking-widest ${isCurrent ? 'text-emerald-300' : 'text-slate-400'}`}>{prayer.name}</h3>
+                    <p className="text-xl font-black tracking-tight">{formatTime12h(prayer.time)}</p>
+                  </div>
+                  {prayer.name !== 'Sunrise' && (
+                    <button 
+                      onClick={() => onUpdateSettings({...settings, notifications: {...settings.notifications, [prayer.name]: !isNotify}})} 
+                      className={`p-4 rounded-2xl transition-all ${isNotify ? 'text-amber-400 bg-white/10 shadow-inner' : 'text-slate-200 bg-slate-50'}`}
+                    >
+                      {isNotify ? <Bell size={20} fill="currentColor" /> : <BellOff size={20} />}
+                    </button>
+                  )}
                 </div>
-                {prayer.name !== 'Sunrise' && (
-                  <button 
-                    onClick={() => onUpdateSettings({...settings, notifications: {...settings.notifications, [prayer.name]: !isNotify}})} 
-                    className={`p-3 rounded-xl transition-all ${isNotify ? 'text-amber-400 bg-black/10' : 'text-slate-200 bg-slate-50'}`}
-                  >
-                    {isNotify ? <Bell size={18} fill="currentColor" /> : <BellOff size={18} />}
-                  </button>
-                )}
-              </div>
-            );
-          })}
+              );
+            })}
+          </div>
         </div>
       )}
 
       {activeTab === 'voices' && (
         <div className="space-y-4 animate-in fade-in duration-500">
-          <div className="bg-emerald-100 p-6 rounded-[2.5rem] border border-emerald-200 mb-6 flex gap-4">
-             <Volume2 className="text-emerald-700 shrink-0" size={20} />
-             <p className="text-[11px] font-bold text-emerald-900 leading-relaxed">Choose the voice that calls you to prayer. This voice will be used for all notifications.</p>
+          <div className="bg-emerald-900 text-white p-8 rounded-[3.5rem] mb-8 flex flex-col gap-4 shadow-xl border border-emerald-950">
+             <div className="flex items-center gap-3">
+                <Mic2 className="text-emerald-400" size={22} />
+                <h3 className="font-black uppercase text-[10px] tracking-[0.4em]">Adhan Voices</h3>
+             </div>
+             <p className="text-sm font-bold text-emerald-100/60 leading-relaxed">Choose a voice for notifications and manual playback.</p>
           </div>
-          {ADHAN_OPTIONS.map((option) => {
-            const isSelected = settings.voiceId === option.id;
-            const playing = isPreviewPlaying === option.id;
-            return (
-              <div key={option.id} className={`p-6 rounded-[2.5rem] border transition-all flex flex-col gap-4 ${isSelected ? 'bg-emerald-900 text-white border-emerald-950 shadow-xl' : 'bg-white border-white shadow-premium'}`}>
-                <div className="flex items-center justify-between">
-                  <div className="flex-1">
-                    <h4 className="font-black text-lg">{option.name}</h4>
-                    <p className={`text-[9px] font-black uppercase tracking-widest ${isSelected ? 'text-emerald-300' : 'text-slate-400'}`}>{option.muezzin}</p>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <button 
-                      onClick={() => togglePreview(option.id, option.url)}
-                      className={`p-4 rounded-2xl transition-all ${playing ? 'bg-amber-500 text-white' : isSelected ? 'bg-white/10 text-white' : 'bg-slate-50 text-emerald-600'}`}
-                    >
-                      {playing ? <Pause size={20} /> : <Play size={20} fill="currentColor" />}
-                    </button>
-                    {!isSelected && (
+          <div className="space-y-4">
+            {ADHAN_OPTIONS.map((option) => {
+              const isSelected = settings.voiceId === option.id;
+              const playing = isPreviewPlaying === option.id;
+              return (
+                <div key={option.id} className={`p-6 rounded-[3rem] border transition-all flex flex-col gap-4 ${isSelected ? 'bg-white border-emerald-500 shadow-xl scale-[1.02]' : 'bg-white border-white shadow-premium opacity-70'}`}>
+                  <div className="flex items-center justify-between">
+                    <div className="flex-1">
+                      <h4 className="font-black text-xl text-slate-800 tracking-tight">{option.name}</h4>
+                      <p className={`text-[9px] font-black uppercase tracking-widest text-slate-400 mt-1`}>{option.muezzin}</p>
+                    </div>
+                    <div className="flex items-center gap-3">
                       <button 
-                        onClick={() => onUpdateSettings({...settings, voiceId: option.id})}
-                        className="bg-emerald-50 text-emerald-900 px-6 py-4 rounded-2xl font-black text-[10px] uppercase tracking-widest"
+                        onClick={() => togglePreview(option.id, option.url)}
+                        className={`p-5 rounded-3xl transition-all ${playing ? 'bg-amber-500 text-white animate-pulse' : 'bg-slate-50 text-emerald-900 shadow-inner'}`}
                       >
-                        Select
+                        {playing ? <Pause size={20} /> : <Play size={20} fill="currentColor" />}
                       </button>
-                    )}
-                    {isSelected && <div className="p-4 bg-emerald-500 rounded-2xl text-white"><Check size={20} /></div>}
+                      {!isSelected ? (
+                        <button 
+                          onClick={() => onUpdateSettings({...settings, voiceId: option.id})}
+                          className="bg-emerald-950 text-white px-8 py-5 rounded-[1.8rem] font-black text-[10px] uppercase tracking-widest shadow-xl active:scale-95"
+                        >
+                          Select
+                        </button>
+                      ) : (
+                        <div className="bg-emerald-500 text-white px-8 py-5 rounded-[1.8rem] font-black text-[10px] uppercase tracking-widest flex items-center gap-2 shadow-lg">
+                          <Check size={16} /> Active
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </div>
-              </div>
-            );
-          })}
+              );
+            })}
+          </div>
         </div>
       )}
 
       {activeTab === 'location' && (
         <div className="space-y-6 animate-in slide-in-from-right duration-500">
-           <div className="bg-white p-8 rounded-[3rem] shadow-premium border border-white">
-              <h3 className="font-black text-2xl tracking-tighter mb-6">Location Finder</h3>
+           <div className="bg-white p-10 rounded-[4rem] shadow-premium border border-white">
+              <header className="mb-10">
+                 <h3 className="font-black text-3xl tracking-tighter text-slate-800">Set Location</h3>
+                 <p className="text-[10px] text-slate-400 font-black uppercase tracking-widest mt-2">Find your city globally</p>
+              </header>
               
-              <div className="relative mb-6">
+              <div className="relative mb-8">
                 <input 
                   value={searchQuery} 
                   onChange={e => setSearchQuery(e.target.value)} 
-                  placeholder="City or Address..." 
-                  className="w-full bg-slate-50 border-2 border-transparent rounded-[1.8rem] p-5 pr-16 text-sm font-bold outline-none focus:bg-white focus:border-emerald-500/20 transition-all shadow-inner"
+                  placeholder="Enter city or address..." 
+                  className="w-full bg-slate-50 border-2 border-transparent rounded-[2.5rem] p-7 pr-20 text-base font-bold outline-none focus:bg-white focus:border-emerald-500/20 transition-all shadow-inner"
                 />
-                <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-2">
-                    {isSuggesting && <Loader2 size={16} className="animate-spin text-emerald-600 mr-2" />}
-                    <button onClick={() => handleSelection(searchQuery)} className="p-3.5 bg-emerald-950 text-white rounded-2xl">
-                        <Search size={18} />
+                <div className="absolute right-4 top-1/2 -translate-y-1/2 flex items-center gap-2">
+                    {isSuggesting && <Loader2 size={20} className="animate-spin text-emerald-600 mr-2" />}
+                    <button onClick={() => handleSelection(searchQuery)} className="p-5 bg-emerald-950 text-white rounded-full shadow-lg">
+                        <Search size={22} />
                     </button>
                 </div>
               </div>
 
               {suggestions.length > 0 && (
-                <div className="bg-slate-50 rounded-[2rem] border border-slate-100 overflow-hidden mb-6">
+                <div className="bg-slate-50 rounded-[3rem] border border-slate-100 overflow-hidden mb-8 shadow-inner">
                   {suggestions.map((s, i) => (
-                    <button key={i} onClick={() => handleSelection(s)} className="w-full text-left p-5 hover:bg-emerald-50 transition-colors flex items-center justify-between border-b border-white last:border-0">
-                      <span className="text-sm font-bold text-slate-700">{s}</span>
-                      <ChevronRight size={14} className="text-slate-300" />
+                    <button key={i} onClick={() => handleSelection(s)} className="w-full text-left p-6 hover:bg-emerald-50 transition-colors flex items-center justify-between border-b border-white last:border-0 group">
+                      <span className="text-sm font-bold text-slate-700 group-hover:text-emerald-900">{s}</span>
+                      <ChevronRight size={16} className="text-slate-300 group-hover:text-emerald-500" />
                     </button>
                   ))}
                 </div>
               )}
 
+              <div className="flex items-center gap-6 py-6 mb-2">
+                 <div className="h-px flex-1 bg-slate-100" />
+                 <span className="text-[9px] font-black text-slate-300 uppercase tracking-[0.3em]">Precision GPS</span>
+                 <div className="h-px flex-1 bg-slate-100" />
+              </div>
+
               <button 
                 onClick={useCurrentLocation} 
                 disabled={isSearching}
-                className="w-full bg-emerald-950 text-white p-6 rounded-[2.2rem] font-black uppercase tracking-widest flex items-center justify-center gap-3 active:scale-[0.98] transition-all shadow-xl"
+                className="w-full bg-emerald-950 text-white p-7 rounded-[2.5rem] font-black uppercase tracking-[0.3em] flex items-center justify-center gap-4 active:scale-[0.98] transition-all shadow-2xl disabled:opacity-50"
               >
-                {isSearching ? <Loader2 size={20} className="animate-spin" /> : <Crosshair size={20} />}
-                Pinpoint via GPS
+                {isSearching ? <Loader2 size={24} className="animate-spin" /> : <Crosshair size={24} />}
+                Auto-Locate Me
               </button>
            </div>
         </div>
@@ -352,32 +372,32 @@ const Adhan: React.FC<AdhanProps> = ({ location, settings, onUpdateSettings, onU
 
       {activeTab === 'calc' && (
         <div className="space-y-8 animate-in slide-in-from-right duration-500">
-           <div className="bg-white p-8 rounded-[3.5rem] shadow-premium border border-white space-y-8">
-              <header className="flex items-center gap-3 mb-2">
-                 <Calculator className="text-emerald-600" size={20} />
-                 <h2 className="font-black text-lg tracking-tight">Calculation Engine</h2>
+           <div className="bg-white p-10 rounded-[4rem] shadow-premium border border-white space-y-10">
+              <header className="flex items-center gap-4 mb-4">
+                 <Calculator className="text-emerald-600" size={24} />
+                 <h2 className="font-black text-2xl tracking-tighter">Adjust Calculations</h2>
               </header>
 
-              <div className="space-y-6">
+              <div className="space-y-8">
                 <div>
-                   <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-3 ml-2">Method</label>
+                   <label className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em] block mb-4 ml-3">Timing Method</label>
                    <select 
                     value={settings.method}
                     onChange={(e) => onUpdateSettings({...settings, method: parseInt(e.target.value)})}
-                    className="w-full bg-slate-50 border-none rounded-2xl p-5 text-sm font-bold outline-none"
+                    className="w-full bg-slate-50 border-none rounded-[1.8rem] p-6 text-sm font-bold outline-none shadow-inner"
                    >
                      {PRAYER_METHODS.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
                    </select>
                 </div>
 
                 <div>
-                   <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-3 ml-2">Jurist School (Asr)</label>
-                   <div className="flex bg-slate-50 p-1.5 rounded-2xl">
+                   <label className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em] block mb-4 ml-3">Asr Juristic School</label>
+                   <div className="flex bg-slate-50 p-2 rounded-[2rem] shadow-inner">
                       {PRAYER_SCHOOLS.map(s => (
                         <button 
                             key={s.id}
                             onClick={() => onUpdateSettings({...settings, school: s.id})}
-                            className={`flex-1 py-3.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${settings.school === s.id ? 'bg-white text-emerald-900 shadow-sm' : 'text-slate-400'}`}
+                            className={`flex-1 py-5 rounded-[1.4rem] text-[10px] font-black uppercase tracking-widest transition-all ${settings.school === s.id ? 'bg-white text-emerald-900 shadow-md' : 'text-slate-400'}`}
                         >
                             {s.name}
                         </button>
@@ -385,23 +405,23 @@ const Adhan: React.FC<AdhanProps> = ({ location, settings, onUpdateSettings, onU
                    </div>
                 </div>
 
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-2 gap-6">
                     <div>
-                       <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-3 ml-2">Fajr Angle</label>
+                       <label className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em] block mb-4 ml-3">Fajr Angle</label>
                        <input 
                         type="number" step="0.1"
                         value={settings.fajrAngle || 18}
                         onChange={(e) => onUpdateSettings({...settings, fajrAngle: parseFloat(e.target.value)})}
-                        className="w-full bg-slate-50 border-none rounded-2xl p-5 text-sm font-black outline-none"
+                        className="w-full bg-slate-50 border-none rounded-[1.8rem] p-6 text-sm font-black outline-none shadow-inner"
                        />
                     </div>
                     <div>
-                       <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-3 ml-2">Isha Angle</label>
+                       <label className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em] block mb-4 ml-3">Isha Angle</label>
                        <input 
                         type="number" step="0.1"
                         value={settings.ishaAngle || 18}
                         onChange={(e) => onUpdateSettings({...settings, ishaAngle: parseFloat(e.target.value)})}
-                        className="w-full bg-slate-50 border-none rounded-2xl p-5 text-sm font-black outline-none"
+                        className="w-full bg-slate-50 border-none rounded-[1.8rem] p-6 text-sm font-black outline-none shadow-inner"
                        />
                     </div>
                 </div>
