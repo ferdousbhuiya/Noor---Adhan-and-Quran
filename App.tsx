@@ -11,7 +11,8 @@ import Qiblah from './components/Qiblah.tsx';
 import Explore from './components/Explore.tsx';
 import SettingsView from './components/Settings.tsx';
 import { db } from './services/db.ts';
-import { Home as HomeIcon, BookOpen, Settings as SettingsIcon, Navigation, Sparkles, Volume2, ShieldAlert, MapPin, Key } from 'lucide-react';
+import { fetchPrayerTimes } from './services/api.ts';
+import { Home as HomeIcon, BookOpen, Settings as SettingsIcon, Navigation, Sparkles, Volume2, ShieldAlert, MapPin, Key, Bell } from 'lucide-react';
 
 const DEFAULT_SETTINGS: AppSettings = {
   quran: {
@@ -37,7 +38,7 @@ const DEFAULT_SETTINGS: AppSettings = {
 const App: React.FC = () => {
   const [activeSection, setActiveSection] = useState<AppSection>(AppSection.Home);
   const [isDbReady, setIsDbReady] = useState(false);
-  const [isKeySelected, setIsKeySelected] = useState(true); // Default to true, check on mount
+  const [isKeySelected, setIsKeySelected] = useState(true);
   const [isAudioUnlocked, setIsAudioUnlocked] = useState(false);
   const [isLocating, setIsLocating] = useState(false);
   
@@ -51,15 +52,49 @@ const App: React.FC = () => {
     return saved ? JSON.parse(saved) : null;
   });
 
+  // Background Adhan Watcher
+  useEffect(() => {
+    if (!location || !isAudioUnlocked) return;
+    
+    const checkPrayerTime = async () => {
+      try {
+        const data = await fetchPrayerTimes(location.lat, location.lng, settings.adhan.method, settings.adhan.school);
+        const now = new Date();
+        const currentTime = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
+        
+        Object.entries(data.times).forEach(([name, time]) => {
+          if (time === currentTime && settings.adhan.notifications[name]) {
+            // Trigger Notification
+            if (Notification.permission === 'granted') {
+              // Removed 'vibrate' from NotificationOptions due to TS type mismatch
+              new Notification(`Time for ${name}`, {
+                body: `It is now time for ${name} prayer in ${location.name}.`,
+                icon: '/icon.png'
+              });
+            }
+          }
+        });
+      } catch (e) {
+        console.error("Adhan watcher error", e);
+      }
+    };
+
+    const interval = setInterval(checkPrayerTime, 60000); // Check every minute
+    return () => clearInterval(interval);
+  }, [location, isAudioUnlocked, settings.adhan]);
+
   useEffect(() => {
     const initApp = async () => {
       try {
         await db.init();
-        
-        // Check for API Key selection (required for Gemini 3/Flash functionality)
         if (window.aistudio && typeof window.aistudio.hasSelectedApiKey === 'function') {
           const hasKey = await window.aistudio.hasSelectedApiKey();
           setIsKeySelected(hasKey);
+        }
+        
+        // Auto-request notification permission
+        if ('Notification' in window && Notification.permission === 'default') {
+          Notification.requestPermission();
         }
       } catch (e) {
         console.warn("Init error", e);
@@ -77,40 +112,49 @@ const App: React.FC = () => {
     localStorage.setItem('noor_settings', JSON.stringify(settings));
   }, [settings]);
 
+  // Persist location whenever it changes
+  useEffect(() => {
+    if (location) {
+      localStorage.setItem('noor_location', JSON.stringify(location));
+    }
+  }, [location]);
+
   const handleOpenKeySelector = async () => {
     if (window.aistudio && typeof window.aistudio.openSelectKey === 'function') {
       await window.aistudio.openSelectKey();
-      setIsKeySelected(true); // Assume success per guidelines
+      setIsKeySelected(true);
     }
   };
 
   const handleBismillah = async () => {
-    setIsLocating(true);
+    // Resume audio context
+    const AudioContextClass = (window as any).AudioContext || (window as any).webkitAudioContext;
+    if (AudioContextClass) {
+      const ctx = new AudioContextClass();
+      if (ctx.state === 'suspended') await ctx.resume();
+    }
     
-    // Attempt to get location if missing
+    setIsAudioUnlocked(true);
+
+    // Only locate if we don't have one saved
     if (!location) {
+      setIsLocating(true);
       navigator.geolocation.getCurrentPosition(
         (pos) => {
           const newLoc = { 
             lat: pos.coords.latitude, 
             lng: pos.coords.longitude, 
-            name: "My Location", 
+            name: "Current Location", 
             isManual: false 
           };
           setLocation(newLoc);
-          localStorage.setItem('noor_location', JSON.stringify(newLoc));
-          setIsAudioUnlocked(true);
           setIsLocating(false);
         },
         () => {
-          setIsAudioUnlocked(true);
           setIsLocating(false);
         },
-        { timeout: 5000 }
+        { timeout: 10000, enableHighAccuracy: true }
       );
-    } else {
-      setIsAudioUnlocked(true);
-      setIsLocating(false);
     }
   };
 
@@ -119,7 +163,6 @@ const App: React.FC = () => {
   return (
     <div className="max-w-md mx-auto bg-slate-50 min-h-screen relative shadow-2xl flex flex-col font-['Plus_Jakarta_Sans'] select-none overflow-hidden">
       
-      {/* API Key Selection Screen */}
       {!isKeySelected && (
         <div className="fixed inset-0 z-[3000] bg-[#064e3b] flex flex-col items-center justify-center p-10 text-center">
             <div className="absolute inset-0 opacity-[0.05]" style={{ backgroundImage: `url('https://www.transparenttextures.com/patterns/islamic-art.png')` }} />
@@ -139,23 +182,19 @@ const App: React.FC = () => {
             >
                 Select API Key
             </button>
-            <a href="https://ai.google.dev/gemini-api/docs/billing" target="_blank" className="mt-6 text-white/30 text-[9px] font-black uppercase tracking-widest underline">
-               Billing Documentation
-            </a>
         </div>
       )}
 
-      {/* Mobile Unlock Screen */}
       {isKeySelected && !isAudioUnlocked && (
         <div className="fixed inset-0 z-[2000] bg-[#064e3b] flex flex-col items-center justify-center p-10 text-center">
             <div className="absolute inset-0 opacity-[0.05]" style={{ backgroundImage: `url('https://www.transparenttextures.com/patterns/islamic-art.png')` }} />
             <div className="relative z-10 mb-12">
                <div className="w-24 h-24 bg-white/10 rounded-[2.5rem] flex items-center justify-center mx-auto border border-white/20 shadow-2xl">
-                  {isLocating ? <MapPin size={40} className="text-amber-400 animate-pulse" /> : <Volume2 size={40} className="text-emerald-400" />}
+                  <Volume2 size={40} className="text-emerald-400" />
                </div>
-               <h2 className="text-3xl font-black text-white tracking-tighter mt-8 mb-4">Noor</h2>
+               <h2 className="text-3xl font-black text-white tracking-tighter mt-8 mb-4">Bismillah</h2>
                <p className="text-emerald-100/60 text-xs font-medium leading-relaxed px-4">
-                  Tap to synchronize prayer times and enable Adhan audio for your location.
+                  Tap to initialize your experience and enable Adhan audio notifications.
                </p>
             </div>
             
@@ -164,13 +203,8 @@ const App: React.FC = () => {
               disabled={isLocating}
               className="relative z-10 w-full bg-white text-[#064e3b] py-6 px-12 rounded-[2.5rem] font-black text-sm uppercase tracking-[0.3em] shadow-2xl active:scale-95 transition-all flex items-center justify-center gap-3 disabled:opacity-50"
             >
-                {isLocating ? "Locating..." : "Bismillah"}
+                {isLocating ? "Syncing..." : "Start Journey"}
             </button>
-            
-            <p className="mt-8 text-white/30 text-[9px] font-black uppercase tracking-widest flex items-center gap-2">
-               <ShieldAlert size={12} />
-               Secure Audio & Location Sync
-            </p>
         </div>
       )}
 

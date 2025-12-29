@@ -6,16 +6,13 @@ import { GoogleGenAI, Type } from "@google/genai";
 const QURAN_API_BASE = 'https://api.alquran.cloud/v1';
 const PRAYER_API_BASE = 'https://api.aladhan.com/v1';
 
-/**
- * Utility to safely extract and parse JSON from AI response
- */
 const safeParseJSON = (text: string) => {
   try {
     const cleaned = text.replace(/```json/g, '').replace(/```/g, '').trim();
     return JSON.parse(cleaned);
   } catch (e) {
     console.error("JSON Parse Error", e, text);
-    throw new Error("Invalid AI response format from server.");
+    throw new Error("Invalid AI response format.");
   }
 };
 
@@ -54,11 +51,10 @@ export const fetchSurahAyahs = async (surahNumber: number, reciter: string = 'ar
 export const fetchLocationSuggestions = async (query: string): Promise<string[]> => {
   if (!query || query.length < 2) return [];
   try {
-    // Instantiate right before use to ensure updated key
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     const response = await ai.models.generateContent({
       model: "gemini-3-flash-preview",
-      contents: `List 5 real-world cities or locations matching "${query}". Include the country name for clarity. Return only as a JSON string array.`,
+      contents: `Suggest exactly 5 real-world cities matching "${query}". Return only a valid JSON array of strings. Example: ["New York, USA", "London, UK"]`,
       config: {
         responseMimeType: "application/json",
         responseSchema: {
@@ -69,11 +65,8 @@ export const fetchLocationSuggestions = async (query: string): Promise<string[]>
     });
     return safeParseJSON(response.text);
   } catch (e: any) {
-    if (e.message?.includes("not found")) {
-      // Trigger re-selection if key is missing or invalid
-      if (window.aistudio?.openSelectKey) window.aistudio.openSelectKey();
-    }
-    throw e;
+    console.error("Suggestions error", e);
+    return [];
   }
 };
 
@@ -81,7 +74,7 @@ export const geocodeAddress = async (address: string): Promise<{ lat: number, ln
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   const response = await ai.models.generateContent({
     model: "gemini-3-flash-preview",
-    contents: `Find the precise coordinates (latitude, longitude) and official full name for the location: "${address}". Return the data as a JSON object with properties 'lat', 'lng', and 'name'.`,
+    contents: `Geocode the following location: "${address}". Return a JSON object with 'lat', 'lng', and 'name' (the full formatted name). Be precise.`,
     config: {
       responseMimeType: "application/json",
       responseSchema: {
@@ -119,14 +112,7 @@ export const fetchPrayerTimes = async (
   fajrAngle?: number,
   ishaAngle?: number
 ): Promise<{ times: PrayerTimes; hijriDate: string; hijriArabic: string; locationName: string; rawHijri: any }> => {
-  const dateStr = new Date().toISOString().split('T')[0];
-  let url = `${PRAYER_API_BASE}/timings?latitude=${latitude}&longitude=${longitude}&method=${method}&school=${school}`;
-  
-  if (fajrAngle || ishaAngle) {
-    url += `&methodSettings=${fajrAngle || 'null'},null,${ishaAngle || 'null'}`;
-  }
-
-  const cacheKey = `${dateStr}_${latitude.toFixed(2)}_${longitude.toFixed(2)}`;
+  const url = `${PRAYER_API_BASE}/timings?latitude=${latitude}&longitude=${longitude}&method=${method}&school=${school}`;
   
   try {
     const res = await fetch(url);
@@ -142,8 +128,6 @@ export const fetchPrayerTimes = async (
       rawHijri: hijri
     };
   } catch (e) {
-    const localTimes = await db.getPrayerTimes(cacheKey);
-    if (localTimes) return { times: localTimes, hijriDate: 'Offline Mode', hijriArabic: '', locationName: '', rawHijri: null };
     throw e;
   }
 };
