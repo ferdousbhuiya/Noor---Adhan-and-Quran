@@ -12,7 +12,7 @@ const safeParseJSON = (text: string) => {
     return JSON.parse(cleaned);
   } catch (e) {
     console.error("JSON Parse Error", e, text);
-    throw new Error("Invalid AI response format.");
+    throw new Error("Invalid response from location service.");
   }
 };
 
@@ -54,7 +54,7 @@ export const fetchLocationSuggestions = async (query: string): Promise<string[]>
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     const response = await ai.models.generateContent({
       model: "gemini-3-flash-preview",
-      contents: `Suggest exactly 5 real-world cities matching "${query}". Return only a valid JSON array of strings. Example: ["New York, USA", "London, UK"]`,
+      contents: `Provide exactly 5 globally recognized city names starting with or similar to "${query}". Format the output strictly as a JSON array of strings, including the country name for clarity. Example: ["Paris, France", "Parise, Italy"]`,
       config: {
         responseMimeType: "application/json",
         responseSchema: {
@@ -74,7 +74,7 @@ export const geocodeAddress = async (address: string): Promise<{ lat: number, ln
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   const response = await ai.models.generateContent({
     model: "gemini-3-flash-preview",
-    contents: `Geocode the following location: "${address}". Return a JSON object with 'lat', 'lng', and 'name' (the full formatted name). Be precise.`,
+    contents: `Geocode the location: "${address}". Return a strict JSON object with properties 'lat' (number), 'lng' (number), and 'name' (the full, official formatted name with city and country). Ensure high coordinate precision.`,
     config: {
       responseMimeType: "application/json",
       responseSchema: {

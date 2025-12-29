@@ -12,7 +12,7 @@ import Explore from './components/Explore.tsx';
 import SettingsView from './components/Settings.tsx';
 import { db } from './services/db.ts';
 import { fetchPrayerTimes } from './services/api.ts';
-import { Home as HomeIcon, BookOpen, Settings as SettingsIcon, Navigation, Sparkles, Volume2, ShieldAlert, MapPin, Key, Bell } from 'lucide-react';
+import { Home as HomeIcon, BookOpen, Settings as SettingsIcon, Navigation, Volume2, MapPin, Bell, CheckCircle2 } from 'lucide-react';
 
 const DEFAULT_SETTINGS: AppSettings = {
   quran: {
@@ -38,7 +38,6 @@ const DEFAULT_SETTINGS: AppSettings = {
 const App: React.FC = () => {
   const [activeSection, setActiveSection] = useState<AppSection>(AppSection.Home);
   const [isDbReady, setIsDbReady] = useState(false);
-  const [isKeySelected, setIsKeySelected] = useState(true);
   const [isAudioUnlocked, setIsAudioUnlocked] = useState(false);
   const [isLocating, setIsLocating] = useState(false);
   
@@ -49,37 +48,54 @@ const App: React.FC = () => {
   
   const [location, setLocation] = useState<LocationData | null>(() => {
     const saved = localStorage.getItem('noor_location');
-    return saved ? JSON.parse(saved) : null;
+    if (saved) {
+      try {
+        return JSON.parse(saved);
+      } catch (e) {
+        return null;
+      }
+    }
+    return null;
   });
 
-  // Background Adhan Watcher
+  // Background Adhan Watcher - Optimized for Mobile Browsers
   useEffect(() => {
     if (!location || !isAudioUnlocked) return;
     
+    let lastNotifiedTime: string | null = null;
+
     const checkPrayerTime = async () => {
       try {
         const data = await fetchPrayerTimes(location.lat, location.lng, settings.adhan.method, settings.adhan.school);
         const now = new Date();
         const currentTime = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
         
+        if (currentTime === lastNotifiedTime) return;
+
         Object.entries(data.times).forEach(([name, time]) => {
           if (time === currentTime && settings.adhan.notifications[name]) {
-            // Trigger Notification
+            lastNotifiedTime = currentTime;
+            // Visual & Haptic Notification
             if (Notification.permission === 'granted') {
-              // Removed 'vibrate' from NotificationOptions due to TS type mismatch
-              new Notification(`Time for ${name}`, {
-                body: `It is now time for ${name} prayer in ${location.name}.`,
-                icon: '/icon.png'
-              });
+              // Cast NotificationOptions to any to fix missing 'renotify' property in TypeScript definitions
+              new Notification(`Prayer Time: ${name}`, {
+                body: `It is now time for ${name} in ${location.name}.`,
+                icon: '/icon.png',
+                tag: 'adhan-alert',
+                renotify: true
+              } as any);
             }
+            // Trigger vibration if supported
+            if (navigator.vibrate) navigator.vibrate([500, 200, 500]);
           }
         });
       } catch (e) {
-        console.error("Adhan watcher error", e);
+        console.error("Adhan monitoring failed", e);
       }
     };
 
-    const interval = setInterval(checkPrayerTime, 60000); // Check every minute
+    const interval = setInterval(checkPrayerTime, 30000); // Check every 30 seconds for accuracy
+    checkPrayerTime(); // Initial check
     return () => clearInterval(interval);
   }, [location, isAudioUnlocked, settings.adhan]);
 
@@ -87,17 +103,15 @@ const App: React.FC = () => {
     const initApp = async () => {
       try {
         await db.init();
-        if (window.aistudio && typeof window.aistudio.hasSelectedApiKey === 'function') {
-          const hasKey = await window.aistudio.hasSelectedApiKey();
-          setIsKeySelected(hasKey);
-        }
         
         // Auto-request notification permission
         if ('Notification' in window && Notification.permission === 'default') {
-          Notification.requestPermission();
+          try {
+            await Notification.requestPermission();
+          } catch (e) {}
         }
       } catch (e) {
-        console.warn("Init error", e);
+        console.warn("Database initialization failed", e);
       } finally {
         setIsDbReady(true);
         if (typeof (window as any).hideAppLoader === 'function') {
@@ -112,22 +126,14 @@ const App: React.FC = () => {
     localStorage.setItem('noor_settings', JSON.stringify(settings));
   }, [settings]);
 
-  // Persist location whenever it changes
   useEffect(() => {
     if (location) {
       localStorage.setItem('noor_location', JSON.stringify(location));
     }
   }, [location]);
 
-  const handleOpenKeySelector = async () => {
-    if (window.aistudio && typeof window.aistudio.openSelectKey === 'function') {
-      await window.aistudio.openSelectKey();
-      setIsKeySelected(true);
-    }
-  };
-
   const handleBismillah = async () => {
-    // Resume audio context
+    // Unlock Audio Context for Mobile
     const AudioContextClass = (window as any).AudioContext || (window as any).webkitAudioContext;
     if (AudioContextClass) {
       const ctx = new AudioContextClass();
@@ -136,7 +142,7 @@ const App: React.FC = () => {
     
     setIsAudioUnlocked(true);
 
-    // Only locate if we don't have one saved
+    // If location is already known, don't re-locate
     if (!location) {
       setIsLocating(true);
       navigator.geolocation.getCurrentPosition(
@@ -144,7 +150,7 @@ const App: React.FC = () => {
           const newLoc = { 
             lat: pos.coords.latitude, 
             lng: pos.coords.longitude, 
-            name: "Current Location", 
+            name: "My Location", 
             isManual: false 
           };
           setLocation(newLoc);
@@ -152,8 +158,9 @@ const App: React.FC = () => {
         },
         () => {
           setIsLocating(false);
+          // If auto-locate fails, user can set it manually in Adhan tab
         },
-        { timeout: 10000, enableHighAccuracy: true }
+        { timeout: 8000, enableHighAccuracy: true }
       );
     }
   };
@@ -163,38 +170,17 @@ const App: React.FC = () => {
   return (
     <div className="max-w-md mx-auto bg-slate-50 min-h-screen relative shadow-2xl flex flex-col font-['Plus_Jakarta_Sans'] select-none overflow-hidden">
       
-      {!isKeySelected && (
-        <div className="fixed inset-0 z-[3000] bg-[#064e3b] flex flex-col items-center justify-center p-10 text-center">
+      {!isAudioUnlocked && (
+        <div className="fixed inset-0 z-[2000] bg-[#064e3b] flex flex-col items-center justify-center p-10 text-center animate-in fade-in duration-500">
             <div className="absolute inset-0 opacity-[0.05]" style={{ backgroundImage: `url('https://www.transparenttextures.com/patterns/islamic-art.png')` }} />
-            <div className="relative z-10 mb-8">
-               <div className="w-20 h-20 bg-amber-500 rounded-[2rem] flex items-center justify-center mx-auto shadow-2xl text-emerald-950">
-                  <Key size={32} />
-               </div>
-               <h2 className="text-2xl font-black text-white tracking-tighter mt-8 mb-4">Activation Required</h2>
-               <p className="text-emerald-100/60 text-[11px] font-medium leading-relaxed px-4">
-                  To enable smart search and location features, please select a valid Google Gemini API key.
-               </p>
-            </div>
             
-            <button 
-              onClick={handleOpenKeySelector}
-              className="relative z-10 w-full bg-white text-[#064e3b] py-5 rounded-[2rem] font-black text-xs uppercase tracking-[0.2em] shadow-2xl active:scale-95 transition-all flex items-center justify-center gap-3"
-            >
-                Select API Key
-            </button>
-        </div>
-      )}
-
-      {isKeySelected && !isAudioUnlocked && (
-        <div className="fixed inset-0 z-[2000] bg-[#064e3b] flex flex-col items-center justify-center p-10 text-center">
-            <div className="absolute inset-0 opacity-[0.05]" style={{ backgroundImage: `url('https://www.transparenttextures.com/patterns/islamic-art.png')` }} />
             <div className="relative z-10 mb-12">
-               <div className="w-24 h-24 bg-white/10 rounded-[2.5rem] flex items-center justify-center mx-auto border border-white/20 shadow-2xl">
+               <div className="w-24 h-24 bg-white/10 rounded-[2.8rem] flex items-center justify-center mx-auto border border-white/20 shadow-2xl backdrop-blur-md">
                   <Volume2 size={40} className="text-emerald-400" />
                </div>
                <h2 className="text-3xl font-black text-white tracking-tighter mt-8 mb-4">Bismillah</h2>
-               <p className="text-emerald-100/60 text-xs font-medium leading-relaxed px-4">
-                  Tap to initialize your experience and enable Adhan audio notifications.
+               <p className="text-emerald-100/60 text-xs font-medium leading-relaxed px-6">
+                  {location ? `Welcome back! Tap below to activate Adhan alerts for ${location.name}.` : "Initialize your spiritual companion and enable precise prayer timings."}
                </p>
             </div>
             
@@ -203,8 +189,22 @@ const App: React.FC = () => {
               disabled={isLocating}
               className="relative z-10 w-full bg-white text-[#064e3b] py-6 px-12 rounded-[2.5rem] font-black text-sm uppercase tracking-[0.3em] shadow-2xl active:scale-95 transition-all flex items-center justify-center gap-3 disabled:opacity-50"
             >
-                {isLocating ? "Syncing..." : "Start Journey"}
+                {isLocating ? (
+                  <>
+                    <div className="w-4 h-4 border-2 border-emerald-900 border-t-transparent animate-spin rounded-full" />
+                    Finding You...
+                  </>
+                ) : (
+                  location ? "Resume Journey" : "Start Journey"
+                )}
             </button>
+            
+            {location && !isLocating && (
+              <div className="relative z-10 mt-6 flex items-center gap-2 text-emerald-300/50">
+                 <CheckCircle2 size={14} />
+                 <span className="text-[10px] font-black uppercase tracking-widest">Saved: {location.name}</span>
+              </div>
+            )}
         </div>
       )}
 
